@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Stacks Tip Jar</title>
-  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stacks Tip Jar ⚡</title>
+  <style>
     * {
       margin: 0;
       padding: 0;
@@ -219,74 +220,80 @@
       border-color: #667eea;
       background: #f7f7ff;
     }
-  
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⚡ Stacks Tip Jar</h1>
+    <p class="subtitle">Send STX tips on Bitcoin L2</p>
 
-
-  
-    ⚡ Stacks Tip Jar
-    Send STX tips on Bitcoin L2
-
-    
-      ⚠️ Setup Required
+    <div class="setup-notice" id="setupNotice">
+      <strong>⚠️ Setup Required</strong>
       Update CONTRACT_ADDRESS and CONTRACT_NAME in the HTML before deploying!
-    
+    </div>
 
-    
-      Connected Wallet:
-      
-    
+    <div class="wallet-info" id="walletInfo" style="display: none;">
+      <div>Connected Wallet:</div>
+      <div class="wallet-address" id="walletAddress"></div>
+    </div>
 
-    
-      
-        Contract Balance:
-        --
-      
-      
-        Total Tips Received:
-        --
-      
-      
-        Network:
-        --
-      
-    
+    <div class="stats" id="stats">
+      <div class="stat-row">
+        <span class="stat-label">Contract Balance:</span>
+        <span class="stat-value" id="contractBalance">--</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Total Tips Received:</span>
+        <span class="stat-value" id="totalTips">--</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Network:</span>
+        <span class="stat-value" id="network">--</span>
+      </div>
+    </div>
 
-    
-      Quick Amounts
-      
-        0.1 STX
-        0.5 STX
-        1 STX
-      
-    
+    <div class="input-group">
+      <label>Quick Amounts</label>
+      <div class="quick-amounts">
+        <div class="quick-amount" onclick="setAmount(0.1)">0.1 STX</div>
+        <div class="quick-amount" onclick="setAmount(0.5)">0.5 STX</div>
+        <div class="quick-amount" onclick="setAmount(1)">1 STX</div>
+      </div>
+    </div>
 
-    
-      Custom Amount (STX)
-      
-    
+    <div class="input-group">
+      <label for="amount">Custom Amount (STX)</label>
+      <input 
+        id="amount" 
+        type="number" 
+        step="0.000001" 
+        min="0.000001"
+        placeholder="Enter amount in STX"
+      />
+    </div>
 
-    
+    <button class="btn btn-primary" id="connectBtn">
       Connect Wallet
-    
+    </button>
 
-    
+    <button class="btn btn-primary" id="sendTipBtn" style="display: none;" disabled>
       Send Tip
-    
+    </button>
 
-    
+    <button class="btn btn-secondary" id="refreshBtn" style="display: none;">
       Refresh Stats
-    
+    </button>
 
-    
+    <div class="status" id="status"></div>
 
-    
+    <div class="footer">
       Built on Stacks • Secured by Bitcoin
-    
-  
+    </div>
+  </div>
 
-  
+  <script src="https://unpkg.com/@stacks/connect@7.7.0/dist/umd/index.js"></script>
 
-  
+  <script>
     // ⚠️ REPLACE THESE WITH YOUR DEPLOYED CONTRACT DETAILS
     const CONTRACT_ADDRESS = "YOUR_CONTRACT_ADDRESS_HERE";
     const CONTRACT_NAME = "tip-jar";
@@ -408,21 +415,6 @@
     if (CONTRACT_ADDRESS !== "YOUR_CONTRACT_ADDRESS_HERE") {
       document.getElementById('setupNotice').style.display = 'none';
     }
-  
-
-
-```
-
----
-
-## File 3: `vercel.json`
-
-```json
-{
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ]
-}
+  </script>
+</body>
+</html>
