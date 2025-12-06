@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Stacks Tip Jar</title>
+  
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 24px;
+      padding: 40px;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    h1 {
+      font-size: 32px;
+      margin-bottom: 8px;
+      color: #1a1a1a;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 32px;
+      font-size: 16px;
+    }
+
+    .stats {
+      background: #f7f7f7;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .stat-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .stat-label {
+      color: #666;
+      font-size: 14px;
+    }
+
+    .stat-value {
+      font-weight: 600;
+      color: #1a1a1a;
+    }
+
+    .input-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: #333;
+      font-size: 14px;
+    }
+
+    input {
+      width: 100%;
+      padding: 14px;
+      border: 2px solid #e0e0e0;
+      border-radius: 12px;
+      font-size: 16px;
+      transition: border-color 0.3s;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-bottom: 12px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+      background: #f0f0f0;
+      color: #333;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: #e0e0e0;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-top: 20px;
+      padding: 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      display: none;
+    }
+
+    .status.show {
+      display: block;
+    }
+
+    .status.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+
+    .status.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+
+    .status.info {
+      background: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+
+    .wallet-info {
+      background: #e8f4f8;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 24px;
+      font-size: 14px;
+    }
+
+    .wallet-address {
+      font-family: 'Courier New', monospace;
+      word-break: break-all;
+      margin-top: 8px;
+      color: #0c5460;
+    }
+
+    .setup-notice {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 24px;
+      font-size: 14px;
+      color: #856404;
+    }
+
+    .setup-notice strong {
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .footer {
+      margin-top: 24px;
+      text-align: center;
+      font-size: 12px;
+      color: #999;
+    }
+
+    .quick-amounts {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .quick-amount {
+      flex: 1;
+      padding: 10px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      background: white;
+      cursor: pointer;
+      text-align: center;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+
+    .quick-amount:hover {
+      border-color: #667eea;
+      background: #f7f7ff;
+    }
+  
+
+
+  
+    ⚡ Stacks Tip Jar
+    Send STX tips on Bitcoin L2
+
+    
+      ⚠️ Setup Required
+      Update CONTRACT_ADDRESS and CONTRACT_NAME in the HTML before deploying!
+    
+
+    
+      Connected Wallet:
+      
+    
+
+    
+      
+        Contract Balance:
+        --
+      
+      
+        Total Tips Received:
+        --
+      
+      
+        Network:
+        --
+      
+    
+
+    
+      Quick Amounts
+      
+        0.1 STX
+        0.5 STX
+        1 STX
+      
+    
+
+    
+      Custom Amount (STX)
+      
+    
+
+    
+      Connect Wallet
+    
+
+    
+      Send Tip
+    
+
+    
+      Refresh Stats
+    
+
+    
+
+    
+      Built on Stacks • Secured by Bitcoin
+    
+  
+
+  
+
+  
+    // ⚠️ REPLACE THESE WITH YOUR DEPLOYED CONTRACT DETAILS
+    const CONTRACT_ADDRESS = "YOUR_CONTRACT_ADDRESS_HERE";
+    const CONTRACT_NAME = "tip-jar";
+    const NETWORK = "testnet"; // Change to "mainnet" for production
+
+    // Stacks Connect configuration
+    const appConfig = new StacksConnect.AppConfig(['store_write', 'publish_data']);
+    const userSession = new StacksConnect.UserSession({ appConfig });
+
+    let userAddress = null;
+
+    // Check if already connected
+    if (userSession.isUserSignedIn()) {
+      handleUserSignedIn();
+    }
+
+    // Connect wallet button
+    document.getElementById('connectBtn').onclick = async () => {
+      try {
+        await StacksConnect.showConnect({
+          appDetails: {
+            name: "Stacks Tip Jar",
+            icon: window.location.origin + "/favicon.ico"
+          },
+          onFinish: () => {
+            handleUserSignedIn();
+          },
+          userSession: userSession
+        });
+      } catch (error) {
+        showStatus('Failed to connect wallet: ' + error.message, 'error');
+      }
+    };
+
+    function handleUserSignedIn() {
+      const userData = userSession.loadUserData();
+      userAddress = userData.profile.stxAddress[NETWORK];
+      
+      document.getElementById('walletAddress').textContent = userAddress;
+      document.getElementById('walletInfo').style.display = 'block';
+      document.getElementById('connectBtn').style.display = 'none';
+      document.getElementById('sendTipBtn').style.display = 'block';
+      document.getElementById('sendTipBtn').disabled = false;
+      document.getElementById('refreshBtn').style.display = 'block';
+      document.getElementById('network').textContent = NETWORK;
+
+      refreshStats();
+    }
+
+    // Set amount from quick buttons
+    function setAmount(value) {
+      document.getElementById('amount').value = value;
+    }
+
+    // Send tip button
+    document.getElementById('sendTipBtn').onclick = async () => {
+      const amount = document.getElementById('amount').value;
+      
+      if (!amount || Number(amount) <= 0) {
+        showStatus('Please enter a valid amount', 'error');
+        return;
+      }
+
+      // Convert STX to microSTX (1 STX = 1,000,000 microSTX)
+      const microAmount = Math.floor(Number(amount) * 1000000);
+
+      showStatus('Preparing transaction...', 'info');
+
+      try {
+        const options = {
+          network: NETWORK === 'mainnet' ? 'mainnet' : 'testnet',
+          contractAddress: CONTRACT_ADDRESS,
+          contractName: CONTRACT_NAME,
+          functionName: 'send-tip',
+          functionArgs: [
+            StacksConnect.uintCV(microAmount)
+          ],
+          onFinish: (data) => {
+            showStatus(`Transaction submitted! TX ID: ${data.txId}`, 'success');
+            setTimeout(refreshStats, 3000);
+          },
+          onCancel: () => {
+            showStatus('Transaction cancelled', 'info');
+          }
+        };
+
+        await StacksConnect.openContractCall(options);
+      } catch (error) {
+        showStatus('Transaction failed: ' + error.message, 'error');
+      }
+    };
+
+    // Refresh stats button
+    document.getElementById('refreshBtn').onclick = refreshStats;
+
+    async function refreshStats() {
+      try {
+        // In a real app, you'd query the contract here
+        // For now, show placeholder
+        showStatus('Stats refresh coming soon - integrate with Stacks.js readonly calls', 'info');
+      } catch (error) {
+        console.error('Failed to refresh stats:', error);
+      }
+    }
+
+    function showStatus(message, type) {
+      const statusEl = document.getElementById('status');
+      statusEl.textContent = message;
+      statusEl.className = `status show ${type}`;
+      
+      if (type === 'success' || type === 'info') {
+        setTimeout(() => {
+          statusEl.classList.remove('show');
+        }, 5000);
+      }
+    }
+
+    // Hide setup notice if contract is configured
+    if (CONTRACT_ADDRESS !== "YOUR_CONTRACT_ADDRESS_HERE") {
+      document.getElementById('setupNotice').style.display = 'none';
+    }
+  
+
+
+```
+
+---
+
+## File 3: `vercel.json`
+
+```json
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
