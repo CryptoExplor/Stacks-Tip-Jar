@@ -3,9 +3,15 @@
   "version": "1.0.0",
   "description": "A simple Stacks tip jar dApp",
   "scripts": {
-    "dev": "python3 -m http.server 3000 --directory public || python -m http.server 3000 --directory public"
+    "dev": "python3 -m http.server 3000 --directory public || python -m http.server 3000 --directory public",
+    "deploy": "vercel"
   },
-  "keywords": ["stacks", "blockchain", "clarity", "bitcoin"],
-  "author": "Your Name",
+  "keywords": [
+    "stacks",
+    "blockchain",
+    "clarity",
+    "bitcoin"
+  ],
+  "author": "CryptoExplor",
   "license": "MIT"
 }
