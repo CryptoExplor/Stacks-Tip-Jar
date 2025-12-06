@@ -65,6 +65,20 @@ vercel
 
 That's it! Your tip jar is live 🚀
 
+## Project Structure
+
+```
+stacks-tip-jar/
+├── contracts/
+│   └── tip-jar.clar       # Clarity smart contract
+├── public/
+│   └── index.html         # Frontend web app
+├── vercel.json            # Vercel deployment config
+├── package.json           # Project metadata
+├── .gitignore            # Git ignore rules
+└── README.md             # This file
+```
+
 ## Usage
 
 1. Visit your deployed site
@@ -126,57 +140,3 @@ If you found this helpful, send a tip! 😊
 ---
 
 **Built with ❤️ on Stacks**
-```
-
----
-
-## Deployment Instructions
-
-### Step 1: Create GitHub Repository
-
-1. Go to GitHub and create new repo: `stacks-tip-jar`
-2. Clone it locally
-3. Create the folder structure and copy all files above
-4. Commit and push:
-
-```bash
-git add .
-git commit -m "Initial commit: Stacks Tip Jar dApp"
-git push origin main
-```
-
-### Step 2: Deploy Contract
-
-1. Install [Leather Wallet](https://leather.io/) or [Hiro Wallet](https://wallet.hiro.so/)
-2. Get testnet STX from [faucet](https://explorer.hiro.so/sandbox/faucet)
-3. Go to [Stacks Explorer Sandbox](https://explorer.hiro.so/sandbox/deploy)
-4. Paste contract from `contracts/tip-jar.clar`
-5. Click "Deploy Contract"
-6. Save your contract address!
-
-### Step 3: Update Frontend
-
-Edit `public/index.html` lines 256-258:
-
-```javascript
-const CONTRACT_ADDRESS = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM"; // Your address
-const CONTRACT_NAME = "tip-jar";
-const NETWORK = "testnet";
-```
-
-### Step 4: Deploy to Vercel
-
-1. Go to [vercel.com/new](https://vercel.com/new)
-2. Import your GitHub repository
-3. Root Directory: `./`
-4. Output Directory: `public`
-5. Click "Deploy"
-
-Done! 🎉
-
-## Next Steps
-
-1. Test the tip jar with testnet STX
-2. Make small improvements and commit daily for leaderboard activity
-3. Switch to mainnet when ready
-4. Share your tip jar link!
