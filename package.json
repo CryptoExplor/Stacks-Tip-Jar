@@ -1,0 +1,11 @@
+{
+  "name": "stacks-tip-jar",
+  "version": "1.0.0",
+  "description": "A simple Stacks tip jar dApp",
+  "scripts": {
+    "dev": "python3 -m http.server 3000 --directory public || python -m http.server 3000 --directory public"
+  },
+  "keywords": ["stacks", "blockchain", "clarity", "bitcoin"],
+  "author": "Your Name",
+  "license": "MIT"
+}
