@@ -367,7 +367,6 @@
 
   <script>
     // ⚠️ REPLACE WITH YOUR DEPLOYED CONTRACT ADDRESS
-    // Format: Just the address OR full "ADDRESS.CONTRACT-NAME"
     const CONTRACT_ADDRESS = "ST3ZQXJPR493FCYNAVFX1YSK7EMT6JF909E3SDNQG";
     const CONTRACT_NAME = "tip-jar";
     const NETWORK = "testnet"; // Change to "mainnet" for production
@@ -382,6 +381,7 @@
     // Check for wallet on page load
     window.addEventListener('load', () => {
       checkWalletAvailability();
+      refreshStats(); // Load stats on page load
     });
 
     function checkWalletAvailability() {
@@ -393,7 +393,7 @@
       }
     }
 
-    // Leather wallet connection using new RPC API
+    // Leather wallet connection
     document.getElementById('leatherBtn').onclick = async () => {
       try {
         if (typeof window.LeatherProvider === 'undefined') {
@@ -404,21 +404,16 @@
 
         showStatus('Connecting to Leather...', 'info');
 
-        // Use Leather's RPC-style API
         const response = await window.LeatherProvider.request('getAddresses');
         
-        console.log("Leather Wallet Response:", response); // DEBUG LOG
+        console.log("Leather Response:", response);
 
         if (response.result && response.result.addresses) {
           const addresses = response.result.addresses;
           
-          // ROBUST FILTERING LOGIC
+          // Find Stacks address matching network
           const stacksAddress = addresses.find(addr => {
-            // Check 1: Must be STX symbol
             if (addr.symbol !== 'STX') return false;
-            
-            // Check 2: Try to match network prefix if possible
-            // Testnet starts with ST, Mainnet starts with SP
             if (NETWORK === 'testnet') {
               return addr.address.startsWith('ST');
             } else {
@@ -426,28 +421,22 @@
             }
           });
           
-          // Fallback: If strict network check fails, just take the first STX address found
-          // This handles cases where user might be on wrong network but we still want to connect
           const fallbackAddress = addresses.find(addr => addr.symbol === 'STX');
-          
           const finalAddress = stacksAddress || fallbackAddress;
 
           if (finalAddress) {
             userAddress = finalAddress.address;
             walletType = 'leather';
             
-            // Warn if network seems mismatched
             if (NETWORK === 'testnet' && !userAddress.startsWith('ST')) {
-              showStatus('Warning: Connected to Mainnet wallet while App is in Testnet mode', 'info');
+              showStatus('Warning: Wallet network mismatch - using mainnet wallet on testnet app', 'info');
             }
             
             handleWalletConnected();
           } else {
             console.error("Addresses found:", addresses);
-            showStatus('No Stacks (STX) address found in wallet. Please enable Stacks in Leather.', 'error');
+            showStatus('No Stacks address found. Please enable Stacks in Leather.', 'error');
           }
-        } else {
-          showStatus('Wallet did not return any addresses.', 'error');
         }
       } catch (error) {
         console.error('Leather connection error:', error);
@@ -483,7 +472,6 @@
       }
     };
 
-    // Handle successful wallet connection
     function handleWalletConnected() {
       document.getElementById('walletAddress').textContent = userAddress;
       document.getElementById('walletInfo').style.display = 'block';
@@ -494,7 +482,6 @@
       refreshStats();
     }
 
-    // Disconnect wallet
     document.getElementById('disconnectBtn').onclick = () => {
       userAddress = null;
       walletType = null;
@@ -506,13 +493,12 @@
       showStatus('Wallet disconnected', 'info');
     };
 
-    // Set amount from quick buttons
     function setAmount(value) {
       document.getElementById('amount').value = value;
     }
     window.setAmount = setAmount;
 
-    // Send tip
+    // Send tip function
     document.getElementById('sendTipBtn').onclick = async () => {
       const amount = document.getElementById('amount').value;
       
@@ -526,21 +512,24 @@
         return;
       }
 
-      // Convert STX to microSTX (1 STX = 1,000,000 microSTX)
       const microAmount = Math.floor(Number(amount) * 1000000);
-
       showStatus('Preparing transaction...', 'info');
 
       try {
         let txResponse;
 
         if (walletType === 'leather') {
-          // Leather RPC-style transaction
-          // Split CONTRACT_ADDRESS if it contains the full identifier
           const contractParts = CONTRACT_ADDRESS.includes('.') 
             ? CONTRACT_ADDRESS.split('.') 
             : [CONTRACT_ADDRESS, CONTRACT_NAME];
           
+          console.log('Sending Leather transaction with:', {
+            contractAddress: contractParts[0],
+            contractName: contractParts[1] || CONTRACT_NAME,
+            functionName: 'send-tip',
+            amount: microAmount
+          });
+
           txResponse = await window.LeatherProvider.request('stx_callContract', {
             contractAddress: contractParts[0],
             contractName: contractParts[1] || CONTRACT_NAME,
@@ -548,11 +537,12 @@
             functionArgs: [
               { type: 'uint', value: microAmount.toString() }
             ],
-            network: NETWORK,
-            postConditions: []
+            network: NETWORK
           });
+          
+          console.log('Leather transaction response:', txResponse);
+
         } else if (walletType === 'xverse') {
-          // Xverse transaction
           const stacksProvider = window.XverseProviders.StacksProvider;
           const fullContract = CONTRACT_ADDRESS.includes('.') 
             ? CONTRACT_ADDRESS 
@@ -566,45 +556,113 @@
           });
         }
 
+        // Check for error response
+        if (txResponse && txResponse.error) {
+          throw new Error(txResponse.error.message || JSON.stringify(txResponse.error));
+        }
+
         if (txResponse && txResponse.result) {
           const txId = txResponse.result.txid || txResponse.result;
-          showStatus(`Transaction submitted! TX ID: ${txId}`, 'success');
-          setTimeout(refreshStats, 3000);
+          showStatus(`Transaction submitted! TX: ${txId.substring(0, 8)}...`, 'success');
+          setTimeout(refreshStats, 5000);
         } else {
           showStatus('Transaction completed', 'success');
+          setTimeout(refreshStats, 5000);
         }
 
       } catch (error) {
         console.error('Transaction error:', error);
+        
         if (error.message && error.message.includes('cancel')) {
           showStatus('Transaction cancelled', 'info');
+        } else if (error.message && error.message.includes('Unauthorized')) {
+          showStatus('Contract not found or unauthorized. Check CONTRACT_ADDRESS.', 'error');
         } else {
           showStatus('Transaction failed: ' + (error.message || 'Unknown error'), 'error');
         }
       }
     };
 
-    // Refresh stats
+    // Refresh stats using Stacks.js
     document.getElementById('refreshBtn').onclick = refreshStats;
 
     async function refreshStats() {
       try {
         showStatus('Refreshing stats...', 'info');
         
-        // TODO: Query contract for real data
-        // For now, just show placeholder
-        document.getElementById('contractBalance').textContent = '--';
-        document.getElementById('totalTips').textContent = '--';
+        if (typeof StacksJS === 'undefined') {
+          console.error('Stacks.js not loaded');
+          document.getElementById('contractBalance').textContent = 'Library loading...';
+          document.getElementById('totalTips').textContent = 'Library loading...';
+          return;
+        }
+
+        const network = NETWORK === 'mainnet' 
+          ? new StacksJS.StacksMainnet()
+          : new StacksJS.StacksTestnet();
         
-        setTimeout(() => {
-          showStatus('Stats updated', 'success');
-        }, 1000);
+        const contractParts = CONTRACT_ADDRESS.includes('.') 
+          ? CONTRACT_ADDRESS.split('.') 
+          : [CONTRACT_ADDRESS, CONTRACT_NAME];
+        
+        const contractAddr = contractParts[0];
+        const contractNm = contractParts[1] || CONTRACT_NAME;
+
+        // Query contract balance
+        try {
+          const balanceOptions = {
+            contractAddress: contractAddr,
+            contractName: contractNm,
+            functionName: 'get-contract-balance',
+            functionArgs: [],
+            network: network,
+            senderAddress: contractAddr
+          };
+          
+          const balanceResult = await StacksJS.callReadOnlyFunction(balanceOptions);
+          const balance = StacksJS.cvToValue(balanceResult);
+          
+          console.log('Balance result:', balance);
+          
+          const balanceValue = balance.value || balance;
+          document.getElementById('contractBalance').textContent = 
+            (balanceValue / 1000000).toFixed(6) + ' STX';
+        } catch (e) {
+          console.error('Balance query error:', e);
+          document.getElementById('contractBalance').textContent = 'Contract not found';
+        }
+
+        // Query total tips
+        try {
+          const tipsOptions = {
+            contractAddress: contractAddr,
+            contractName: contractNm,
+            functionName: 'get-total-tips',
+            functionArgs: [],
+            network: network,
+            senderAddress: contractAddr
+          };
+          
+          const tipsResult = await StacksJS.callReadOnlyFunction(tipsOptions);
+          const tips = StacksJS.cvToValue(tipsResult);
+          
+          console.log('Tips result:', tips);
+          
+          const tipsValue = tips.value || tips;
+          document.getElementById('totalTips').textContent = 
+            (tipsValue / 1000000).toFixed(6) + ' STX';
+        } catch (e) {
+          console.error('Tips query error:', e);
+          document.getElementById('totalTips').textContent = 'Contract not found';
+        }
+        
+        showStatus('Stats updated', 'success');
       } catch (error) {
         console.error('Failed to refresh stats:', error);
+        showStatus('Failed to refresh stats: ' + error.message, 'error');
       }
     }
 
-    // Show status messages
     function showStatus(message, type) {
       const statusEl = document.getElementById('status');
       statusEl.textContent = message;
