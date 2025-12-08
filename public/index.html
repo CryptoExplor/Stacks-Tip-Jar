@@ -278,10 +278,7 @@
     <h1>⚡ Stacks Tip Jar</h1>
     <p class="subtitle">Send STX tips on Bitcoin L2</p>
 
-    <div class="setup-notice" id="setupNotice">
-      <strong>⚠️ Setup Required</strong>
-      Update CONTRACT_ADDRESS in the HTML before deploying!
-    </div>
+    <!-- Setup notice removed as requested -->
 
     <div class="wallet-info" id="walletInfo" style="display: none;">
       <div><strong>Connected Wallet</strong></div>
@@ -362,8 +359,21 @@
     </div>
   </div>
 
-  <!-- Import Stacks.js from CDN -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/stacks-blockchain/6.13.0/index.umd.js"></script>
+  <!-- FIX 1: Import Working Stacks.js Libraries -->
+  <!-- We load transactions, network, and common to ensure all functionality works -->
+  <script src="https://unpkg.com/@stacks/common@6.15.0/dist/index.umd.js"></script>
+  <script src="https://unpkg.com/@stacks/network@6.15.0/dist/index.umd.js"></script>
+  <script src="https://unpkg.com/@stacks/transactions@6.15.0/dist/index.umd.js"></script>
+  
+  <script>
+    // FIX 1b: Polyfill to map new libraries to the global StacksJS object the code expects
+    window.StacksJS = {
+      ...window.StacksCommon,
+      ...window.StacksNetwork,
+      ...window.StacksTransactions
+    };
+    console.log('Stacks.js loaded:', typeof StacksJS);
+  </script>
 
   <script>
     // ⚠️ REPLACE WITH YOUR DEPLOYED CONTRACT ADDRESS
@@ -518,29 +528,37 @@
       try {
         let txResponse;
 
+        // FIX 2: Correct Leather transaction implementation
         if (walletType === 'leather') {
-          const contractParts = CONTRACT_ADDRESS.includes('.') 
-            ? CONTRACT_ADDRESS.split('.') 
-            : [CONTRACT_ADDRESS, CONTRACT_NAME];
-          
-          console.log('Sending Leather transaction with:', {
-            contractAddress: contractParts[0],
-            contractName: contractParts[1] || CONTRACT_NAME,
-            functionName: 'send-tip',
-            amount: microAmount
-          });
+          const { uintCV } = window.StacksJS; // Now available after fixing script
 
-          txResponse = await window.LeatherProvider.request('stx_callContract', {
-            contractAddress: contractParts[0],
-            contractName: contractParts[1] || CONTRACT_NAME,
+          const txOptions = {
+            contractAddress: CONTRACT_ADDRESS,
+            contractName: CONTRACT_NAME,
             functionName: 'send-tip',
-            functionArgs: [
-              { type: 'uint', value: microAmount.toString() }
-            ],
-            network: NETWORK
-          });
-          
-          console.log('Leather transaction response:', txResponse);
+            functionArgs: [uintCV(microAmount)],
+            network: NETWORK === 'mainnet' ? 'mainnet' : 'testnet',
+            appDetails: {
+              name: 'Stacks Tip Jar',
+              icon: window.location.origin + '/favicon.ico' // optional
+            },
+            onFinish: (data) => {
+              console.log('TX broadcast:', data.txId);
+              showStatus(`Tip sent! TXID: ${data.txId.slice(0, 8)}...`, 'success');
+              setTimeout(refreshStats, 6000);
+            },
+            onCancel: () => {
+              showStatus('Transaction cancelled', 'info');
+            }
+          };
+
+          try {
+            await window.LeatherProvider.request('stx_callContract', txOptions);
+          } catch (e) {
+            console.error(e);
+            showStatus('Transaction rejected or failed', 'error');
+          }
+          return;
 
         } else if (walletType === 'xverse') {
           const stacksProvider = window.XverseProviders.StacksProvider;
@@ -556,18 +574,21 @@
           });
         }
 
-        // Check for error response
-        if (txResponse && txResponse.error) {
-          throw new Error(txResponse.error.message || JSON.stringify(txResponse.error));
-        }
+        // Handle Xverse response (Leather is handled in onFinish above)
+        if (walletType === 'xverse') {
+            // Check for error response
+            if (txResponse && txResponse.error) {
+              throw new Error(txResponse.error.message || JSON.stringify(txResponse.error));
+            }
 
-        if (txResponse && txResponse.result) {
-          const txId = txResponse.result.txid || txResponse.result;
-          showStatus(`Transaction submitted! TX: ${txId.substring(0, 8)}...`, 'success');
-          setTimeout(refreshStats, 5000);
-        } else {
-          showStatus('Transaction completed', 'success');
-          setTimeout(refreshStats, 5000);
+            if (txResponse && txResponse.result) {
+              const txId = txResponse.result.txid || txResponse.result;
+              showStatus(`Transaction submitted! TX: ${txId.substring(0, 8)}...`, 'success');
+              setTimeout(refreshStats, 5000);
+            } else {
+              showStatus('Transaction completed', 'success');
+              setTimeout(refreshStats, 5000);
+            }
         }
 
       } catch (error) {
@@ -674,11 +695,8 @@
         }, 5000);
       }
     }
-
-    // Hide setup notice if contract is configured
-    if (CONTRACT_ADDRESS !== "YOUR_CONTRACT_ADDRESS_HERE") {
-      document.getElementById('setupNotice').style.display = 'none';
-    }
+    
+    // FIX 3: Removed the old Setup Notice toggle logic since the element is gone
   </script>
 </body>
 </html>
