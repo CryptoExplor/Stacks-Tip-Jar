@@ -1,4 +1,4 @@
-// wallet.js - Wallet connection and management (FIXED)
+// wallet.js - Wallet connection and management (FULLY FIXED)
 import { CONFIG, isValidStacksAddress } from './config.js';
 
 export class WalletManager {
@@ -157,70 +157,52 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Leather - FIXED VERSION
+  // Send tip via Leather - CORRECTED with proper format
   async sendTipLeather(microAmount) {
-    return new Promise((resolve, reject) => {
-      try {
-        // Correct Leather contract call format
-        window.LeatherProvider.request('stx_callContract', {
-          contractAddress: CONFIG.CONTRACT.ADDRESS,
-          contractName: CONFIG.CONTRACT.NAME,
-          functionName: 'send-tip',
-          functionArgs: [
-            {
-              type: 'uint',
-              value: microAmount.toString()
-            }
-          ],
-          network: CONFIG.NETWORK.DEFAULT,
-          appDetails: {
-            name: CONFIG.APP.NAME,
-            icon: CONFIG.APP.URL + CONFIG.APP.ICON
-          },
-          onFinish: (data) => {
-            console.log('Leather transaction finished:', data);
-            resolve({
-              success: true,
-              txId: data.txId,
-              walletType: 'leather'
-            });
-          },
-          onCancel: () => {
-            console.log('Leather transaction cancelled');
-            reject(new Error('Transaction cancelled by user'));
-          }
-        }).catch(error => {
-          console.error('Leather request error:', error);
-          reject(error);
-        });
-      } catch (error) {
-        console.error('Leather transaction error:', error);
-        reject(error);
+    console.log('Sending tip via Leather:', microAmount);
+    
+    try {
+      const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
+      
+      // According to Leather docs, functionArgs should be hex-encoded strings
+      // For a uint, we pass it as a string with 'u' prefix
+      const response = await window.LeatherProvider.request('stx_callContract', {
+        contract: contractId,
+        functionName: 'send-tip',
+        functionArgs: [`u${microAmount}`], // Pass as string array
+      });
+
+      console.log('Leather response:', response);
+
+      if (response.error) {
+        throw new Error(response.error.message || 'Transaction failed');
       }
-    });
+
+      return {
+        success: true,
+        txId: response.result?.txid || response.result?.txId,
+        walletType: 'leather'
+      };
+    } catch (error) {
+      console.error('Leather transaction error:', error);
+      throw error;
+    }
   }
 
-  // Send tip via Xverse - FIXED VERSION
+  // Send tip via Xverse - CORRECTED with proper format
   async sendTipXverse(microAmount) {
+    console.log('Sending tip via Xverse:', microAmount);
+    
     try {
       const stacksProvider = window.XverseProviders.StacksProvider;
+      const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
       
-      // Correct Xverse contract call format
-      const response = await stacksProvider.request('stacks_callContract', {
-        contractAddress: CONFIG.CONTRACT.ADDRESS,
-        contractName: CONFIG.CONTRACT.NAME,
+      // For Xverse, functionArgs should be hex-encoded strings
+      // We'll use the same format as Leather
+      const response = await stacksProvider.request('stx_callContract', {
+        contract: contractId,
         functionName: 'send-tip',
-        functionArgs: [
-          {
-            type: 'uint',
-            value: microAmount.toString()
-          }
-        ],
-        network: CONFIG.NETWORK.DEFAULT,
-        appDetails: {
-          name: CONFIG.APP.NAME,
-          icon: CONFIG.APP.URL + CONFIG.APP.ICON
-        }
+        functionArgs: [`u${microAmount}`], // Pass as string array
       });
 
       console.log('Xverse response:', response);
