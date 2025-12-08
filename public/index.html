@@ -140,7 +140,7 @@
     }
 
     .status.show {
-      display: block;
+      display: true;
     }
 
     .status.success {
@@ -278,8 +278,6 @@
     <h1>⚡ Stacks Tip Jar</h1>
     <p class="subtitle">Send STX tips on Bitcoin L2</p>
 
-    <!-- Setup notice removed as requested -->
-
     <div class="wallet-info" id="walletInfo" style="display: none;">
       <div><strong>Connected Wallet</strong></div>
       <div class="wallet-address" id="walletAddress"></div>
@@ -359,20 +357,23 @@
     </div>
   </div>
 
-  <!-- FIX 1: Import Working Stacks.js Libraries -->
-  <!-- We load transactions, network, and common to ensure all functionality works -->
+  <!-- Stacks.js UMD bundles -->
   <script src="https://unpkg.com/@stacks/common@6.15.0/dist/index.umd.js"></script>
   <script src="https://unpkg.com/@stacks/network@6.15.0/dist/index.umd.js"></script>
   <script src="https://unpkg.com/@stacks/transactions@6.15.0/dist/index.umd.js"></script>
   
   <script>
-    // FIX 1b: Polyfill to map new libraries to the global StacksJS object the code expects
+    // Wire the parts we actually use into a single helper object
     window.StacksJS = {
-      ...window.StacksCommon,
-      ...window.StacksNetwork,
-      ...window.StacksTransactions
+      // Network classes
+      StacksMainnet: window.StacksNetwork && window.StacksNetwork.StacksMainnet,
+      StacksTestnet: window.StacksNetwork && window.StacksNetwork.StacksTestnet,
+      // Transactions helpers
+      callReadOnlyFunction: window.StacksTransactions && window.StacksTransactions.callReadOnlyFunction,
+      cvToJSON: window.StacksTransactions && window.StacksTransactions.cvToJSON,
+      uintCV: window.StacksTransactions && window.StacksTransactions.uintCV,
     };
-    console.log('Stacks.js loaded:', typeof StacksJS);
+    console.log('StacksJS wired:', window.StacksJS);
   </script>
 
   <script>
@@ -382,7 +383,8 @@
     const NETWORK = "testnet"; // Change to "mainnet" for production
 
     // Update UI for network
-    document.getElementById('networkDisplay').textContent = NETWORK.charAt(0).toUpperCase() + NETWORK.slice(1);
+    document.getElementById('networkDisplay').textContent =
+      NETWORK.charAt(0).toUpperCase() + NETWORK.slice(1);
 
     // State management
     let userAddress = null;
@@ -415,7 +417,6 @@
         showStatus('Connecting to Leather...', 'info');
 
         const response = await window.LeatherProvider.request('getAddresses');
-        
         console.log("Leather Response:", response);
 
         if (response.result && response.result.addresses) {
@@ -528,9 +529,11 @@
       try {
         let txResponse;
 
-        // FIX 2: Correct Leather transaction implementation
         if (walletType === 'leather') {
-          const { uintCV } = window.StacksJS; // Now available after fixing script
+          const { uintCV } = window.StacksJS;
+          if (typeof uintCV !== 'function') {
+            throw new Error('Stacks uintCV helper not available');
+          }
 
           const txOptions = {
             contractAddress: CONTRACT_ADDRESS,
@@ -540,7 +543,7 @@
             network: NETWORK === 'mainnet' ? 'mainnet' : 'testnet',
             appDetails: {
               name: 'Stacks Tip Jar',
-              icon: window.location.origin + '/favicon.ico' // optional
+              icon: window.location.origin + '/favicon.ico'
             },
             onFinish: (data) => {
               console.log('TX broadcast:', data.txId);
@@ -574,21 +577,20 @@
           });
         }
 
-        // Handle Xverse response (Leather is handled in onFinish above)
+        // Handle Xverse response
         if (walletType === 'xverse') {
-            // Check for error response
-            if (txResponse && txResponse.error) {
-              throw new Error(txResponse.error.message || JSON.stringify(txResponse.error));
-            }
+          if (txResponse && txResponse.error) {
+            throw new Error(txResponse.error.message || JSON.stringify(txResponse.error));
+          }
 
-            if (txResponse && txResponse.result) {
-              const txId = txResponse.result.txid || txResponse.result;
-              showStatus(`Transaction submitted! TX: ${txId.substring(0, 8)}...`, 'success');
-              setTimeout(refreshStats, 5000);
-            } else {
-              showStatus('Transaction completed', 'success');
-              setTimeout(refreshStats, 5000);
-            }
+          if (txResponse && txResponse.result) {
+            const txId = txResponse.result.txid || txResponse.result;
+            showStatus(`Transaction submitted! TX: ${txId.substring(0, 8)}...`, 'success');
+            setTimeout(refreshStats, 5000);
+          } else {
+            showStatus('Transaction completed', 'success');
+            setTimeout(refreshStats, 5000);
+          }
         }
 
       } catch (error) {
@@ -611,16 +613,21 @@
       try {
         showStatus('Refreshing stats...', 'info');
         
-        if (typeof StacksJS === 'undefined') {
-          console.error('Stacks.js not loaded');
+        if (
+          typeof window.StacksJS === 'undefined' ||
+          !StacksJS.StacksTestnet ||
+          !StacksJS.callReadOnlyFunction
+        ) {
+          console.error('StacksJS not fully loaded', window.StacksJS);
           document.getElementById('contractBalance').textContent = 'Library loading...';
           document.getElementById('totalTips').textContent = 'Library loading...';
           return;
         }
 
-        const network = NETWORK === 'mainnet' 
-          ? new StacksJS.StacksMainnet()
-          : new StacksJS.StacksTestnet();
+        const network =
+          NETWORK === 'mainnet'
+            ? new StacksJS.StacksMainnet()
+            : new StacksJS.StacksTestnet();
         
         const contractParts = CONTRACT_ADDRESS.includes('.') 
           ? CONTRACT_ADDRESS.split('.') 
@@ -641,13 +648,13 @@
           };
           
           const balanceResult = await StacksJS.callReadOnlyFunction(balanceOptions);
-          const balance = StacksJS.cvToValue(balanceResult);
+          const balanceJson = StacksJS.cvToJSON(balanceResult);
           
-          console.log('Balance result:', balance);
+          console.log('Balance result (json):', balanceJson);
           
-          const balanceValue = balance.value || balance;
+          const microBalance = Number(balanceJson.value || 0);
           document.getElementById('contractBalance').textContent = 
-            (balanceValue / 1000000).toFixed(6) + ' STX';
+            (microBalance / 1000000).toFixed(6) + ' STX';
         } catch (e) {
           console.error('Balance query error:', e);
           document.getElementById('contractBalance').textContent = 'Contract not found';
@@ -665,13 +672,13 @@
           };
           
           const tipsResult = await StacksJS.callReadOnlyFunction(tipsOptions);
-          const tips = StacksJS.cvToValue(tipsResult);
+          const tipsJson = StacksJS.cvToJSON(tipsResult);
           
-          console.log('Tips result:', tips);
+          console.log('Tips result (json):', tipsJson);
           
-          const tipsValue = tips.value || tips;
+          const microTips = Number(tipsJson.value || 0);
           document.getElementById('totalTips').textContent = 
-            (tipsValue / 1000000).toFixed(6) + ' STX';
+            (microTips / 1000000).toFixed(6) + ' STX';
         } catch (e) {
           console.error('Tips query error:', e);
           document.getElementById('totalTips').textContent = 'Contract not found';
@@ -680,7 +687,7 @@
         showStatus('Stats updated', 'success');
       } catch (error) {
         console.error('Failed to refresh stats:', error);
-        showStatus('Failed to refresh stats: ' + error.message, 'error');
+        showStatus('Failed to refresh stats: ' + (error.message || 'Unknown error'), 'error');
       }
     }
 
@@ -695,8 +702,6 @@
         }, 5000);
       }
     }
-    
-    // FIX 3: Removed the old Setup Notice toggle logic since the element is gone
   </script>
 </body>
 </html>
