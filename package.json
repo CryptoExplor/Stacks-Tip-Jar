@@ -1,17 +1,30 @@
 {
   "name": "stacks-tip-jar",
-  "version": "1.0.0",
-  "description": "A simple Stacks tip jar dApp",
+  "version": "2.0.0",
+  "description": "A refactored Stacks tip jar dApp with modular architecture",
+  "type": "module",
   "scripts": {
-    "dev": "python3 -m http.server 3000 --directory public || python -m http.server 3000 --directory public",
-    "deploy": "vercel"
+    "dev": "python3 -m http.server 8000 || python -m http.server 8000",
+    "preview": "vercel dev",
+    "deploy": "vercel --prod"
   },
   "keywords": [
     "stacks",
     "blockchain",
     "clarity",
-    "bitcoin"
+    "bitcoin",
+    "tip-jar",
+    "web3",
+    "farcaster"
   ],
-  "author": "CryptoExplor",
-  "license": "MIT"
+  "author": "CryptoExplorer",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CryptoExplor/stacks-tip-jar.git"
+  },
+  "bugs": {
+    "url": "https://github.com/CryptoExplor/stacks-tip-jar/issues"
+  },
+  "homepage": "https://github.com/CryptoExplor/stacks-tip-jar#readme"
 }
