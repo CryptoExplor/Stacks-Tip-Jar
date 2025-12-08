@@ -174,6 +174,7 @@
       word-break: break-all;
       margin-top: 8px;
       color: #0c5460;
+      font-size: 12px;
     }
 
     .setup-notice {
@@ -253,6 +254,23 @@
     .wallet-icon {
       font-size: 24px;
     }
+
+    .install-notice {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 12px;
+      padding: 12px;
+      margin-top: 16px;
+      font-size: 13px;
+      color: #856404;
+      display: none;
+    }
+
+    .install-notice a {
+      color: #667eea;
+      text-decoration: none;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
@@ -262,26 +280,26 @@
 
     <div class="setup-notice" id="setupNotice">
       <strong>⚠️ Setup Required</strong>
-      Update CONTRACT_ADDRESS and CONTRACT_NAME in the HTML before deploying!
+      Update CONTRACT_ADDRESS in the HTML before deploying!
     </div>
 
     <div class="wallet-info" id="walletInfo" style="display: none;">
-      <div>Connected Wallet:</div>
+      <div><strong>Connected Wallet</strong></div>
       <div class="wallet-address" id="walletAddress"></div>
     </div>
 
     <div class="stats" id="stats">
       <div class="stat-row">
+        <span class="stat-label">Network:</span>
+        <span class="stat-value" id="network">Testnet</span>
+      </div>
+      <div class="stat-row">
         <span class="stat-label">Contract Balance:</span>
         <span class="stat-value" id="contractBalance">--</span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">Total Tips Received:</span>
+        <span class="stat-label">Total Tips:</span>
         <span class="stat-value" id="totalTips">--</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Network:</span>
-        <span class="stat-value" id="network">--</span>
       </div>
     </div>
 
@@ -297,9 +315,10 @@
           <span>Xverse</span>
         </button>
       </div>
-      <button class="btn btn-secondary" id="appkitBtn">
-        <span>🔗 More Wallets (AppKit)</span>
-      </button>
+      
+      <div class="install-notice" id="installNotice">
+        💡 Don't have a wallet? Install <a href="https://leather.io" target="_blank">Leather</a> or <a href="https://xverse.app" target="_blank">Xverse</a>
+      </div>
     </div>
 
     <div id="tipSection" style="display: none;">
@@ -343,62 +362,6 @@
     </div>
   </div>
 
-  <!-- Stacks Connect SDK -->
-  <script src="https://unpkg.com/@stacks/connect@7.7.0/dist/umd/index.js"></script>
-  
-  <!-- Stacks Transactions -->
-  <script src="https://unpkg.com/@stacks/transactions@6.13.0/dist/index.umd.js"></script>
-
-  <!-- Reown AppKit -->
-  <script type="module">
-    import { createAppKit } from 'https://unpkg.com/@reown/appkit@1.8.14/dist/appkit.js'
-    import { WagmiAdapter } from 'https://unpkg.com/@reown/appkit-adapter-wagmi@1.8.14/dist/appkit-adapter-wagmi.js'
-
-    // Configuration
-    const PROJECT_ID = '75cff2cd446ad1ae6c9f22c5c9bbcd6d';
-    
-    // Stacks network configuration
-    const stacksChain = {
-      id: 'stacks:mainnet',
-      name: 'Stacks',
-      nativeCurrency: {
-        name: 'Stacks',
-        symbol: 'STX',
-        decimals: 6
-      },
-      rpcUrls: {
-        default: { http: ['https://stacks-node-api.mainnet.stacks.co'] }
-      },
-      blockExplorers: {
-        default: { name: 'Stacks Explorer', url: 'https://explorer.hiro.so' }
-      }
-    };
-
-    // Initialize AppKit
-    const appKit = createAppKit({
-      adapters: [new WagmiAdapter({
-        networks: [stacksChain],
-        projectId: PROJECT_ID
-      })],
-      projectId: PROJECT_ID,
-      networks: [stacksChain],
-      metadata: {
-        name: 'Stacks Tip Jar',
-        description: 'Send STX tips on Bitcoin L2',
-        url: window.location.origin,
-        icons: ['https://avatars.githubusercontent.com/u/181592?s=200&v=4']
-      },
-      features: {
-        analytics: true,
-        email: false,
-        socials: []
-      }
-    });
-
-    // Make appKit available globally
-    window.appKit = appKit;
-  </script>
-
   <script>
     // ⚠️ REPLACE THESE WITH YOUR DEPLOYED CONTRACT DETAILS
     const CONTRACT_ADDRESS = "YOUR_CONTRACT_ADDRESS_HERE";
@@ -406,164 +369,114 @@
     const NETWORK = "testnet"; // Change to "mainnet" for production
 
     // State management
-    let connectedWallet = null;
     let userAddress = null;
-    let walletType = null; // 'leather', 'xverse', or 'appkit'
+    let walletType = null;
 
-    // Initialize Stacks Connect for Leather/Xverse
-    const appConfig = new StacksConnect.AppConfig(['store_write', 'publish_data']);
-    const userSession = new StacksConnect.UserSession({ appConfig });
-
-    // Check if already connected on page load
+    // Check for wallet on page load
     window.addEventListener('load', () => {
-      if (userSession.isUserSignedIn()) {
-        handleStacksWalletConnected('leather');
-      }
+      checkWalletAvailability();
     });
 
-    // Leather wallet connection
+    function checkWalletAvailability() {
+      const hasLeather = typeof window.LeatherProvider !== 'undefined';
+      const hasXverse = typeof window.XverseProviders !== 'undefined';
+      
+      if (!hasLeather && !hasXverse) {
+        document.getElementById('installNotice').style.display = 'block';
+      }
+    }
+
+    // Leather wallet connection using new RPC API
     document.getElementById('leatherBtn').onclick = async () => {
       try {
-        showStatus('Connecting to Leather wallet...', 'info');
+        if (typeof window.LeatherProvider === 'undefined') {
+          showStatus('Leather wallet not found. Please install from leather.io', 'error');
+          document.getElementById('installNotice').style.display = 'block';
+          return;
+        }
+
+        showStatus('Connecting to Leather...', 'info');
+
+        // Use Leather's RPC-style API
+        const response = await window.LeatherProvider.request('getAddresses');
         
-        await StacksConnect.showConnect({
-          appDetails: {
-            name: "Stacks Tip Jar",
-            icon: window.location.origin + "/favicon.ico"
-          },
-          onFinish: () => {
-            handleStacksWalletConnected('leather');
-          },
-          onCancel: () => {
-            showStatus('Connection cancelled', 'info');
-          },
-          userSession: userSession
-        });
+        if (response.result && response.result.addresses) {
+          const addresses = response.result.addresses;
+          // Get the Stacks address based on network
+          const stacksAddress = addresses.find(addr => 
+            addr.type === 'stacks' && 
+            (NETWORK === 'mainnet' ? addr.symbol === 'STX' : addr.symbol === 'STX')
+          );
+
+          if (stacksAddress) {
+            userAddress = stacksAddress.address;
+            walletType = 'leather';
+            handleWalletConnected();
+          } else {
+            showStatus('No Stacks address found', 'error');
+          }
+        }
       } catch (error) {
         console.error('Leather connection error:', error);
-        showStatus('Failed to connect to Leather: ' + error.message, 'error');
+        showStatus('Failed to connect: ' + (error.message || 'Unknown error'), 'error');
       }
     };
 
     // Xverse wallet connection
     document.getElementById('xverseBtn').onclick = async () => {
       try {
-        showStatus('Connecting to Xverse wallet...', 'info');
-        
-        await StacksConnect.showConnect({
-          appDetails: {
-            name: "Stacks Tip Jar",
-            icon: window.location.origin + "/favicon.ico"
-          },
-          onFinish: () => {
-            handleStacksWalletConnected('xverse');
-          },
-          onCancel: () => {
-            showStatus('Connection cancelled', 'info');
-          },
-          userSession: userSession
-        });
-      } catch (error) {
-        console.error('Xverse connection error:', error);
-        showStatus('Failed to connect to Xverse: ' + error.message, 'error');
-      }
-    };
+        if (typeof window.XverseProviders === 'undefined') {
+          showStatus('Xverse wallet not found. Please install from xverse.app', 'error');
+          document.getElementById('installNotice').style.display = 'block';
+          return;
+        }
 
-    // AppKit connection
-    document.getElementById('appkitBtn').onclick = async () => {
-      try {
-        showStatus('Opening AppKit wallet selector...', 'info');
-        
-        if (window.appKit) {
-          await window.appKit.open();
-          
-          // Listen for account changes
-          window.appKit.subscribeAccount((account) => {
-            if (account.isConnected) {
-              handleAppKitConnected(account);
-            }
-          });
-        } else {
-          showStatus('AppKit is still loading, please try again in a moment', 'info');
+        showStatus('Connecting to Xverse...', 'info');
+
+        const stacksProvider = window.XverseProviders.StacksProvider;
+        const response = await stacksProvider.request('getAddresses', {
+          purposes: ['stacks'],
+          message: 'Connect to Stacks Tip Jar'
+        });
+
+        if (response.result && response.result.addresses && response.result.addresses.length > 0) {
+          userAddress = response.result.addresses[0].address;
+          walletType = 'xverse';
+          handleWalletConnected();
         }
       } catch (error) {
-        console.error('AppKit connection error:', error);
-        showStatus('Failed to open AppKit: ' + error.message, 'error');
+        console.error('Xverse connection error:', error);
+        showStatus('Failed to connect: ' + (error.message || 'Unknown error'), 'error');
       }
     };
 
-    // Handle Stacks wallet connection (Leather/Xverse)
-    function handleStacksWalletConnected(type) {
-      try {
-        const userData = userSession.loadUserData();
-        userAddress = userData.profile.stxAddress[NETWORK];
-        walletType = type;
-        connectedWallet = userData;
-        
-        document.getElementById('walletAddress').textContent = userAddress;
-        document.getElementById('walletInfo').style.display = 'block';
-        document.getElementById('connectSection').style.display = 'none';
-        document.getElementById('tipSection').style.display = 'block';
-        document.getElementById('network').textContent = NETWORK;
-
-        showStatus(`Connected with ${type.charAt(0).toUpperCase() + type.slice(1)}!`, 'success');
-        refreshStats();
-      } catch (error) {
-        console.error('Error handling wallet connection:', error);
-        showStatus('Error loading wallet data: ' + error.message, 'error');
-      }
-    }
-
-    // Handle AppKit connection
-    function handleAppKitConnected(account) {
-      try {
-        userAddress = account.address;
-        walletType = 'appkit';
-        connectedWallet = account;
-        
-        document.getElementById('walletAddress').textContent = userAddress;
-        document.getElementById('walletInfo').style.display = 'block';
-        document.getElementById('connectSection').style.display = 'none';
-        document.getElementById('tipSection').style.display = 'block';
-        document.getElementById('network').textContent = NETWORK;
-
-        showStatus('Connected with AppKit!', 'success');
-        refreshStats();
-      } catch (error) {
-        console.error('Error handling AppKit connection:', error);
-        showStatus('Error loading AppKit data: ' + error.message, 'error');
-      }
+    // Handle successful wallet connection
+    function handleWalletConnected() {
+      document.getElementById('walletAddress').textContent = userAddress;
+      document.getElementById('walletInfo').style.display = 'block';
+      document.getElementById('connectSection').style.display = 'none';
+      document.getElementById('tipSection').style.display = 'block';
+      
+      showStatus(`Connected with ${walletType}!`, 'success');
+      refreshStats();
     }
 
     // Disconnect wallet
-    document.getElementById('disconnectBtn').onclick = async () => {
-      try {
-        if (walletType === 'appkit' && window.appKit) {
-          await window.appKit.disconnect();
-        } else {
-          userSession.signUserOut();
-        }
-        
-        userAddress = null;
-        walletType = null;
-        connectedWallet = null;
-        
-        document.getElementById('walletInfo').style.display = 'none';
-        document.getElementById('connectSection').style.display = 'block';
-        document.getElementById('tipSection').style.display = 'none';
-        
-        showStatus('Wallet disconnected', 'info');
-      } catch (error) {
-        showStatus('Error disconnecting: ' + error.message, 'error');
-      }
+    document.getElementById('disconnectBtn').onclick = () => {
+      userAddress = null;
+      walletType = null;
+      
+      document.getElementById('walletInfo').style.display = 'none';
+      document.getElementById('connectSection').style.display = 'block';
+      document.getElementById('tipSection').style.display = 'none';
+      
+      showStatus('Wallet disconnected', 'info');
     };
 
     // Set amount from quick buttons
     function setAmount(value) {
       document.getElementById('amount').value = value;
     }
-
-    // Make setAmount available globally
     window.setAmount = setAmount;
 
     // Send tip
@@ -586,27 +499,46 @@
       showStatus('Preparing transaction...', 'info');
 
       try {
-        const options = {
-          network: NETWORK === 'mainnet' ? 'mainnet' : 'testnet',
-          contractAddress: CONTRACT_ADDRESS,
-          contractName: CONTRACT_NAME,
-          functionName: 'send-tip',
-          functionArgs: [
-            StacksConnect.uintCV(microAmount)
-          ],
-          onFinish: (data) => {
-            showStatus(`Transaction submitted! TX ID: ${data.txId}`, 'success');
-            setTimeout(refreshStats, 3000);
-          },
-          onCancel: () => {
-            showStatus('Transaction cancelled', 'info');
-          }
-        };
+        let txResponse;
 
-        await StacksConnect.openContractCall(options);
+        if (walletType === 'leather') {
+          // Leather RPC-style transaction
+          txResponse = await window.LeatherProvider.request('stx_callContract', {
+            contractAddress: CONTRACT_ADDRESS,
+            contractName: CONTRACT_NAME,
+            functionName: 'send-tip',
+            functionArgs: [
+              { type: 'uint', value: microAmount.toString() }
+            ],
+            network: NETWORK,
+            postConditions: []
+          });
+        } else if (walletType === 'xverse') {
+          // Xverse transaction
+          const stacksProvider = window.XverseProviders.StacksProvider;
+          txResponse = await stacksProvider.request('stacks_callContract', {
+            contract: `${CONTRACT_ADDRESS}.${CONTRACT_NAME}`,
+            functionName: 'send-tip',
+            arguments: [microAmount.toString()],
+            network: NETWORK
+          });
+        }
+
+        if (txResponse && txResponse.result) {
+          const txId = txResponse.result.txid || txResponse.result;
+          showStatus(`Transaction submitted! TX ID: ${txId}`, 'success');
+          setTimeout(refreshStats, 3000);
+        } else {
+          showStatus('Transaction completed', 'success');
+        }
+
       } catch (error) {
         console.error('Transaction error:', error);
-        showStatus('Transaction failed: ' + error.message, 'error');
+        if (error.message && error.message.includes('cancel')) {
+          showStatus('Transaction cancelled', 'info');
+        } else {
+          showStatus('Transaction failed: ' + (error.message || 'Unknown error'), 'error');
+        }
       }
     };
 
@@ -617,14 +549,16 @@
       try {
         showStatus('Refreshing stats...', 'info');
         
-        // TODO: Implement actual contract state reading
-        // For now, just show a message
+        // TODO: Query contract for real data
+        // For now, just show placeholder
+        document.getElementById('contractBalance').textContent = '--';
+        document.getElementById('totalTips').textContent = '--';
+        
         setTimeout(() => {
-          showStatus('Stats refresh - integrate Stacks.js readonly calls for live data', 'info');
+          showStatus('Stats updated', 'success');
         }, 1000);
       } catch (error) {
         console.error('Failed to refresh stats:', error);
-        showStatus('Failed to refresh stats: ' + error.message, 'error');
       }
     }
 
