@@ -291,7 +291,7 @@
     <div class="stats" id="stats">
       <div class="stat-row">
         <span class="stat-label">Network:</span>
-        <span class="stat-value" id="network">Testnet</span>
+        <span class="stat-value" id="networkDisplay">Testnet</span>
       </div>
       <div class="stat-row">
         <span class="stat-label">Contract Balance:</span>
@@ -372,6 +372,9 @@
     const CONTRACT_NAME = "tip-jar";
     const NETWORK = "testnet"; // Change to "mainnet" for production
 
+    // Update UI for network
+    document.getElementById('networkDisplay').textContent = NETWORK.charAt(0).toUpperCase() + NETWORK.slice(1);
+
     // State management
     let userAddress = null;
     let walletType = null;
@@ -404,21 +407,47 @@
         // Use Leather's RPC-style API
         const response = await window.LeatherProvider.request('getAddresses');
         
+        console.log("Leather Wallet Response:", response); // DEBUG LOG
+
         if (response.result && response.result.addresses) {
           const addresses = response.result.addresses;
-          // Get the Stacks address based on network
-          const stacksAddress = addresses.find(addr => 
-            addr.type === 'stacks' && 
-            (NETWORK === 'mainnet' ? addr.symbol === 'STX' : addr.symbol === 'STX')
-          );
+          
+          // ROBUST FILTERING LOGIC
+          const stacksAddress = addresses.find(addr => {
+            // Check 1: Must be STX symbol
+            if (addr.symbol !== 'STX') return false;
+            
+            // Check 2: Try to match network prefix if possible
+            // Testnet starts with ST, Mainnet starts with SP
+            if (NETWORK === 'testnet') {
+              return addr.address.startsWith('ST');
+            } else {
+              return addr.address.startsWith('SP');
+            }
+          });
+          
+          // Fallback: If strict network check fails, just take the first STX address found
+          // This handles cases where user might be on wrong network but we still want to connect
+          const fallbackAddress = addresses.find(addr => addr.symbol === 'STX');
+          
+          const finalAddress = stacksAddress || fallbackAddress;
 
-          if (stacksAddress) {
-            userAddress = stacksAddress.address;
+          if (finalAddress) {
+            userAddress = finalAddress.address;
             walletType = 'leather';
+            
+            // Warn if network seems mismatched
+            if (NETWORK === 'testnet' && !userAddress.startsWith('ST')) {
+              showStatus('Warning: Connected to Mainnet wallet while App is in Testnet mode', 'info');
+            }
+            
             handleWalletConnected();
           } else {
-            showStatus('No Stacks address found', 'error');
+            console.error("Addresses found:", addresses);
+            showStatus('No Stacks (STX) address found in wallet. Please enable Stacks in Leather.', 'error');
           }
+        } else {
+          showStatus('Wallet did not return any addresses.', 'error');
         }
       } catch (error) {
         console.error('Leather connection error:', error);
