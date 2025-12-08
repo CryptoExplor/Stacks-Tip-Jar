@@ -363,8 +363,9 @@
   </div>
 
   <script>
-    // ⚠️ REPLACE THESE WITH YOUR DEPLOYED CONTRACT DETAILS
-    const CONTRACT_ADDRESS = "ST3ZQXJPR493FCYNAVFX1YSK7EMT6JF909E3SDNQG.tip-jar";
+    // ⚠️ REPLACE WITH YOUR DEPLOYED CONTRACT ADDRESS
+    // Format: Just the address OR full "ADDRESS.CONTRACT-NAME"
+    const CONTRACT_ADDRESS = "ST3ZQXJPR493FCYNAVFX1YSK7EMT6JF909E3SDNQG";
     const CONTRACT_NAME = "tip-jar";
     const NETWORK = "testnet"; // Change to "mainnet" for production
 
@@ -503,9 +504,14 @@
 
         if (walletType === 'leather') {
           // Leather RPC-style transaction
+          // Split CONTRACT_ADDRESS if it contains the full identifier
+          const contractParts = CONTRACT_ADDRESS.includes('.') 
+            ? CONTRACT_ADDRESS.split('.') 
+            : [CONTRACT_ADDRESS, CONTRACT_NAME];
+          
           txResponse = await window.LeatherProvider.request('stx_callContract', {
-            contractAddress: CONTRACT_ADDRESS,
-            contractName: CONTRACT_NAME,
+            contractAddress: contractParts[0],
+            contractName: contractParts[1] || CONTRACT_NAME,
             functionName: 'send-tip',
             functionArgs: [
               { type: 'uint', value: microAmount.toString() }
@@ -516,8 +522,12 @@
         } else if (walletType === 'xverse') {
           // Xverse transaction
           const stacksProvider = window.XverseProviders.StacksProvider;
+          const fullContract = CONTRACT_ADDRESS.includes('.') 
+            ? CONTRACT_ADDRESS 
+            : `${CONTRACT_ADDRESS}.${CONTRACT_NAME}`;
+          
           txResponse = await stacksProvider.request('stacks_callContract', {
-            contract: `${CONTRACT_ADDRESS}.${CONTRACT_NAME}`,
+            contract: fullContract,
             functionName: 'send-tip',
             arguments: [microAmount.toString()],
             network: NETWORK
