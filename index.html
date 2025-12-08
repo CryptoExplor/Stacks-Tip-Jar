@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stacks Tip Jar</title>
+  
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="Send STX tips on Bitcoin L2 - A simple tip jar built on Stacks blockchain" />
+  <meta name="keywords" content="stacks, bitcoin, tip jar, cryptocurrency, STX" />
+  
+  <!-- Open Graph / Farcaster Frame -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://stacks-chi.vercel.app" />
+  <meta property="og:title" content="Stacks Tip Jar ⚡" />
+  <meta property="og:description" content="Send STX tips on Bitcoin L2" />
+  <meta property="og:image" content="https://stacks-chi.vercel.app/og-image.png" />
+  
+  <!-- Farcaster Frame Tags -->
+  <meta property="fc:frame" content="vNext" />
+  <meta property="fc:frame:image" content="https://stacks-chi.vercel.app/og-image.png" />
+  <meta property="fc:frame:image:aspect_ratio" content="1:1" />
+  <meta property="fc:frame:button:1" content="Send Tip" />
+  <meta property="fc:frame:button:1:action" content="link" />
+  <meta property="fc:frame:button:1:target" content="https://stacks-chi.vercel.app" />
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>⚡ Stacks Tip Jar</h1>
+      <p class="subtitle">Send STX tips on Bitcoin L2</p>
+    </header>
+
+    <!-- Wallet Info (shown when connected) -->
+    <div class="wallet-info" id="walletInfo">
+      <div class="wallet-info-header">
+        <strong>Connected Wallet</strong>
+        <span class="wallet-badge" id="walletBadge"></span>
+      </div>
+      <div class="wallet-address" id="walletAddress"></div>
+    </div>
+
+    <!-- Contract Stats -->
+    <div class="stats" id="stats">
+      <div class="stat-row">
+        <span class="stat-label">Network:</span>
+        <span class="stat-value" id="networkDisplay">Testnet</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Contract Balance:</span>
+        <span class="stat-value" id="contractBalance">--</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Total Tips Received:</span>
+        <span class="stat-value" id="totalTips">--</span>
+      </div>
+    </div>
+
+    <!-- Connect Wallet Section -->
+    <div id="connectSection" class="show">
+      <label class="section-label">Connect Your Wallet</label>
+      <div class="wallet-buttons">
+        <button class="wallet-btn" id="leatherBtn">
+          <span class="wallet-icon">🦊</span>
+          <span>Leather</span>
+        </button>
+        <button class="wallet-btn" id="xverseBtn">
+          <span class="wallet-icon">⚡</span>
+          <span>Xverse</span>
+        </button>
+      </div>
+      
+      <div class="install-notice" id="installNotice">
+        💡 Don't have a wallet? Install 
+        <a href="https://leather.io" target="_blank" rel="noopener">Leather</a> or 
+        <a href="https://xverse.app" target="_blank" rel="noopener">Xverse</a>
+      </div>
+    </div>
+
+    <!-- Tip Section (shown when connected) -->
+    <div id="tipSection">
+      <div class="input-group">
+        <label class="section-label">Quick Amounts</label>
+        <div class="quick-amounts">
+          <div class="quick-amount" data-amount="0.1">0.1 STX</div>
+          <div class="quick-amount" data-amount="0.5">0.5 STX</div>
+          <div class="quick-amount" data-amount="1">1 STX</div>
+          <div class="quick-amount" data-amount="5">5 STX</div>
+        </div>
+      </div>
+
+      <div class="input-group">
+        <label for="amount" class="section-label">Custom Amount (STX)</label>
+        <input 
+          id="amount" 
+          type="number" 
+          step="0.000001" 
+          min="0.000001"
+          placeholder="Enter amount in STX"
+          autocomplete="off"
+        />
+      </div>
+
+      <button class="btn btn-primary" id="sendTipBtn">
+        <span class="btn-icon">💸</span>
+        <span>Send Tip</span>
+      </button>
+
+      <button class="btn btn-secondary" id="refreshBtn">
+        <span class="btn-icon">🔄</span>
+        <span>Refresh Stats</span>
+      </button>
+
+      <button class="btn btn-secondary" id="disconnectBtn">
+        <span class="btn-icon">🔌</span>
+        <span>Disconnect Wallet</span>
+      </button>
+    </div>
+
+    <!-- Status Messages -->
+    <div class="status" id="status"></div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <p>Built on <strong>Stacks</strong> • Secured by <strong>Bitcoin</strong></p>
+      <p class="footer-links">
+        <a href="https://github.com/yourusername/stacks-tip-jar" target="_blank" rel="noopener">GitHub</a>
+        <span>•</span>
+        <a href="https://stacks.co" target="_blank" rel="noopener">Learn about Stacks</a>
+      </p>
+    </footer>
+  </div>
+
+  <!-- Scripts -->
+  <script type="module" src="/main.js"></script>
+</body>
+</html>
