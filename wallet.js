@@ -1,4 +1,4 @@
-// wallet.js - Wallet connection and management (TIMING FIX)
+// wallet.js - Wallet connection and management (TRANSACTION FIX)
 import { CONFIG } from './config.js';
 
 export class WalletManager {
@@ -7,7 +7,6 @@ export class WalletManager {
     this.walletType = null;
     this.listeners = [];
     this.isReady = false;
-    // Don't auto-wait in constructor, let main.js control it
   }
 
   // Wait for wallet providers to load (PUBLIC METHOD)
@@ -198,7 +197,7 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Leather
+  // Send tip via Leather - FIXED: Using openContractCall
   async sendTipLeather(microAmount) {
     console.log('🦊 Sending via Leather...');
     
@@ -208,49 +207,58 @@ export class WalletManager {
       throw new Error('Leather provider not found');
     }
 
-    try {
-      const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
-      console.log('📝 Contract:', contractId);
-      console.log('🔢 Function args:', [`u${microAmount}`]);
-      
-      const txOptions = {
-        contractAddress: CONFIG.CONTRACT.ADDRESS,
-        contractName: CONFIG.CONTRACT.NAME,
-        functionName: 'send-tip',
-        functionArgs: [`u${microAmount}`],
-        network: CONFIG.NETWORK.DEFAULT,
-        appDetails: {
-          name: CONFIG.APP.NAME,
-          icon: CONFIG.APP.URL + '/icon.png'
-        },
-        onFinish: (data) => {
-          console.log('✅ Transaction finished:', data);
-        },
-        onCancel: () => {
-          console.log('❌ Transaction cancelled');
-        }
-      };
-      
-      console.log('📤 Sending transaction request...');
-      const response = await provider.request('stx_callContract', txOptions);
-      console.log('📨 Provider response:', response);
-
-      if (response.error) {
-        throw new Error(response.error.message || 'Transaction failed');
+    return new Promise((resolve, reject) => {
+      try {
+        const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
+        console.log('📝 Contract:', contractId);
+        console.log('🔢 Amount (micro):', microAmount);
+        
+        const txOptions = {
+          contractAddress: CONFIG.CONTRACT.ADDRESS,
+          contractName: CONFIG.CONTRACT.NAME,
+          functionName: 'send-tip',
+          functionArgs: [`u${microAmount}`],
+          network: CONFIG.NETWORK.DEFAULT,
+          appDetails: {
+            name: CONFIG.APP.NAME,
+            icon: CONFIG.APP.URL + '/icon.png'
+          },
+          onFinish: (data) => {
+            console.log('✅ Transaction finished:', data);
+            resolve({
+              success: true,
+              txId: data.txId,
+              walletType: 'leather'
+            });
+          },
+          onCancel: () => {
+            console.log('❌ Transaction cancelled by user');
+            reject(new Error('Transaction cancelled by user'));
+          }
+        };
+        
+        console.log('📤 Opening contract call popup...');
+        
+        // This is the correct method that opens the popup
+        provider.request('stx_callContract', txOptions).then(response => {
+          console.log('📨 Provider response:', response);
+          
+          if (response.error) {
+            reject(new Error(response.error.message || 'Transaction failed'));
+          }
+        }).catch(error => {
+          console.error('❌ Request error:', error);
+          reject(error);
+        });
+        
+      } catch (error) {
+        console.error('❌ Leather transaction setup failed:', error);
+        reject(error);
       }
-
-      return {
-        success: true,
-        txId: response.result?.txid || response.result?.txId || response.result,
-        walletType: 'leather'
-      };
-    } catch (error) {
-      console.error('❌ Leather transaction failed:', error);
-      throw error;
-    }
+    });
   }
 
-  // Send tip via Xverse
+  // Send tip via Xverse - FIXED: Using proper Xverse API
   async sendTipXverse(microAmount) {
     console.log('⚡ Sending via Xverse...');
     
@@ -258,34 +266,54 @@ export class WalletManager {
       throw new Error('Xverse provider not found');
     }
 
-    try {
-      const stacksProvider = window.XverseProviders.StacksProvider;
-      const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
-      console.log('📝 Contract:', contractId);
-      console.log('🔢 Function args:', [`u${microAmount}`]);
-      
-      console.log('📤 Sending transaction request...');
-      const response = await stacksProvider.request('stx_callContract', {
-        contract: contractId,
-        functionName: 'send-tip',
-        functionArgs: [`u${microAmount}`]
-      });
-      
-      console.log('📨 Provider response:', response);
-
-      if (response.error) {
-        throw new Error(response.error.message || 'Transaction failed');
+    return new Promise((resolve, reject) => {
+      try {
+        const stacksProvider = window.XverseProviders.StacksProvider;
+        const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
+        console.log('📝 Contract:', contractId);
+        console.log('🔢 Amount (micro):', microAmount);
+        
+        const txOptions = {
+          contract: contractId,
+          functionName: 'send-tip',
+          functionArgs: [`u${microAmount}`],
+          appDetails: {
+            name: CONFIG.APP.NAME,
+            icon: CONFIG.APP.URL + '/icon.png'
+          },
+          onFinish: (response) => {
+            console.log('✅ Transaction finished:', response);
+            resolve({
+              success: true,
+              txId: response.txid || response.txId,
+              walletType: 'xverse'
+            });
+          },
+          onCancel: () => {
+            console.log('❌ Transaction cancelled by user');
+            reject(new Error('Transaction cancelled by user'));
+          }
+        };
+        
+        console.log('📤 Opening contract call popup...');
+        
+        // This opens the Xverse popup
+        stacksProvider.request('stx_callContract', txOptions).then(response => {
+          console.log('📨 Provider response:', response);
+          
+          if (response.error) {
+            reject(new Error(response.error.message || 'Transaction failed'));
+          }
+        }).catch(error => {
+          console.error('❌ Request error:', error);
+          reject(error);
+        });
+        
+      } catch (error) {
+        console.error('❌ Xverse transaction setup failed:', error);
+        reject(error);
       }
-
-      return {
-        success: true,
-        txId: response.result?.txid || response.result?.txId || response.result,
-        walletType: 'xverse'
-      };
-    } catch (error) {
-      console.error('❌ Xverse transaction failed:', error);
-      throw error;
-    }
+    });
   }
 }
 
