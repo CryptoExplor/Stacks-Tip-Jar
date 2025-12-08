@@ -7,10 +7,10 @@ export class WalletManager {
     this.walletType = null;
     this.listeners = [];
     this.isReady = false;
-    this.waitForWallets();
+    // Don't auto-wait in constructor, let main.js control it
   }
 
-  // Wait for wallet providers to load
+  // Wait for wallet providers to load (PUBLIC METHOD)
   async waitForWallets() {
     let attempts = 0;
     const maxAttempts = 20;
