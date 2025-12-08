@@ -1,4 +1,4 @@
-// wallet.js - Wallet connection and management
+// wallet.js - Wallet connection and management (FIXED)
 import { CONFIG, isValidStacksAddress } from './config.js';
 
 export class WalletManager {
@@ -157,57 +157,87 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Leather
+  // Send tip via Leather - FIXED VERSION
   async sendTipLeather(microAmount) {
     return new Promise((resolve, reject) => {
-      const txOptions = {
+      try {
+        // Correct Leather contract call format
+        window.LeatherProvider.request('stx_callContract', {
+          contractAddress: CONFIG.CONTRACT.ADDRESS,
+          contractName: CONFIG.CONTRACT.NAME,
+          functionName: 'send-tip',
+          functionArgs: [
+            {
+              type: 'uint',
+              value: microAmount.toString()
+            }
+          ],
+          network: CONFIG.NETWORK.DEFAULT,
+          appDetails: {
+            name: CONFIG.APP.NAME,
+            icon: CONFIG.APP.URL + CONFIG.APP.ICON
+          },
+          onFinish: (data) => {
+            console.log('Leather transaction finished:', data);
+            resolve({
+              success: true,
+              txId: data.txId,
+              walletType: 'leather'
+            });
+          },
+          onCancel: () => {
+            console.log('Leather transaction cancelled');
+            reject(new Error('Transaction cancelled by user'));
+          }
+        }).catch(error => {
+          console.error('Leather request error:', error);
+          reject(error);
+        });
+      } catch (error) {
+        console.error('Leather transaction error:', error);
+        reject(error);
+      }
+    });
+  }
+
+  // Send tip via Xverse - FIXED VERSION
+  async sendTipXverse(microAmount) {
+    try {
+      const stacksProvider = window.XverseProviders.StacksProvider;
+      
+      // Correct Xverse contract call format
+      const response = await stacksProvider.request('stacks_callContract', {
         contractAddress: CONFIG.CONTRACT.ADDRESS,
         contractName: CONFIG.CONTRACT.NAME,
         functionName: 'send-tip',
-        functionArgs: [`u${microAmount}`],
+        functionArgs: [
+          {
+            type: 'uint',
+            value: microAmount.toString()
+          }
+        ],
         network: CONFIG.NETWORK.DEFAULT,
         appDetails: {
           name: CONFIG.APP.NAME,
           icon: CONFIG.APP.URL + CONFIG.APP.ICON
-        },
-        onFinish: (data) => {
-          resolve({
-            success: true,
-            txId: data.txId,
-            walletType: 'leather'
-          });
-        },
-        onCancel: () => {
-          reject(new Error('Transaction cancelled by user'));
         }
+      });
+
+      console.log('Xverse response:', response);
+
+      if (response.error) {
+        throw new Error(response.error.message || 'Transaction failed');
+      }
+
+      return {
+        success: true,
+        txId: response.result?.txid || response.result?.txId || response.result,
+        walletType: 'xverse'
       };
-
-      window.LeatherProvider.request('stx_callContract', txOptions)
-        .catch(error => reject(error));
-    });
-  }
-
-  // Send tip via Xverse
-  async sendTipXverse(microAmount) {
-    const stacksProvider = window.XverseProviders.StacksProvider;
-    const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
-    
-    const response = await stacksProvider.request('stacks_callContract', {
-      contract: contractId,
-      functionName: 'send-tip',
-      arguments: [microAmount.toString()],
-      network: CONFIG.NETWORK.DEFAULT
-    });
-
-    if (response.error) {
-      throw new Error(response.error.message || 'Transaction failed');
+    } catch (error) {
+      console.error('Xverse transaction error:', error);
+      throw error;
     }
-
-    return {
-      success: true,
-      txId: response.result?.txid || response.result,
-      walletType: 'xverse'
-    };
   }
 }
 
