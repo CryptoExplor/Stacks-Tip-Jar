@@ -1,5 +1,11 @@
-// wallet.js - Wallet connection and management (FIXED - No Buffer, proper error handling)
+// wallet.js - Wallet connection and management (FIXED with proper post-conditions)
 import { CONFIG } from './config.js';
+import { 
+  makeStandardSTXPostCondition,
+  makeContractSTXPostCondition,
+  FungibleConditionCode,
+  serializePostCondition
+} from '@stacks/transactions';
 
 export class WalletManager {
   constructor() {
@@ -55,11 +61,18 @@ export class WalletManager {
     };
   }
 
-  // Encode Clarity uint as hex (no Buffer needed)
+  // Encode Clarity uint as hex (browser-compatible, no Buffer)
   encodeClarityUint(microAmount) {
     const hex = microAmount.toString(16);
     const padded = hex.padStart(32, '0');
     return '0x01' + padded;
+  }
+
+  // Convert Uint8Array to hex string (browser-compatible)
+  bytesToHex(bytes) {
+    return Array.from(bytes)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
   }
 
   // Extract txId from response
@@ -222,7 +235,7 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Leather - FIXED with no Buffer
+  // Send tip via Leather - FIXED with proper post-conditions
   async sendTipLeather(microAmount) {
     console.log('🦊 Sending via Leather...');
     
@@ -234,16 +247,42 @@ export class WalletManager {
 
     try {
       const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
+      const [contractAddress, contractName] = contractId.split('.');
       const argHex = this.encodeClarityUint(microAmount);
       
       console.log('📝 Contract:', contractId);
       console.log('🔢 Amount (micro):', microAmount);
       console.log('🔐 Hex-encoded argument:', argHex);
       
+      // Create post-conditions
+      // 1. Sender must send >= microAmount STX
+      const senderPostCondition = makeStandardSTXPostCondition(
+        this.address,
+        FungibleConditionCode.GreaterEqual,
+        BigInt(microAmount)
+      );
+      
+      // 2. Contract must receive >= microAmount STX
+      const contractPostCondition = makeContractSTXPostCondition(
+        contractAddress,
+        contractName,
+        FungibleConditionCode.GreaterEqual,
+        BigInt(microAmount)
+      );
+      
+      // Serialize post-conditions to hex
+      const postConditionHexes = [
+        this.bytesToHex(serializePostCondition(senderPostCondition)),
+        this.bytesToHex(serializePostCondition(contractPostCondition))
+      ];
+      
+      console.log('🛡️ Post-conditions created:', postConditionHexes);
+      
       const params = {
         contract: contractId,
         functionName: 'send-tip',
         functionArgs: [argHex],
+        postConditions: postConditionHexes,
         network: CONFIG.NETWORK.DEFAULT
       };
       
@@ -293,7 +332,7 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Xverse - FIXED with no Buffer
+  // Send tip via Xverse - FIXED with proper post-conditions
   async sendTipXverse(microAmount) {
     console.log('⚡ Sending via Xverse...');
     
@@ -304,16 +343,40 @@ export class WalletManager {
     try {
       const stacksProvider = window.XverseProviders.StacksProvider;
       const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
+      const [contractAddress, contractName] = contractId.split('.');
       const argHex = this.encodeClarityUint(microAmount);
       
       console.log('📝 Contract:', contractId);
       console.log('🔢 Amount (micro):', microAmount);
       console.log('🔐 Hex-encoded argument:', argHex);
       
+      // Create post-conditions (same as Leather)
+      const senderPostCondition = makeStandardSTXPostCondition(
+        this.address,
+        FungibleConditionCode.GreaterEqual,
+        BigInt(microAmount)
+      );
+      
+      const contractPostCondition = makeContractSTXPostCondition(
+        contractAddress,
+        contractName,
+        FungibleConditionCode.GreaterEqual,
+        BigInt(microAmount)
+      );
+      
+      // Serialize post-conditions to hex
+      const postConditionHexes = [
+        this.bytesToHex(serializePostCondition(senderPostCondition)),
+        this.bytesToHex(serializePostCondition(contractPostCondition))
+      ];
+      
+      console.log('🛡️ Post-conditions created:', postConditionHexes);
+      
       const params = {
         contract: contractId,
         functionName: 'send-tip',
         functionArgs: [argHex],
+        postConditions: postConditionHexes,
         network: CONFIG.NETWORK.DEFAULT
       };
       
