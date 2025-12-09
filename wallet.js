@@ -1,6 +1,6 @@
-// wallet.js - Wallet connection and management (FIXED with STX postConditionMode = 'allow')
+// wallet.js - Wallet connection and management (with Withdraw support)
 import { CONFIG } from './config.js';
-import { uintCV, cvToHex } from '@stacks/transactions';
+import { uintCV, cvToHex, standardPrincipalCV } from '@stacks/transactions';
 
 export class WalletManager {
   constructor() {
@@ -67,6 +67,12 @@ export class WalletManager {
   encodeClarityUint(microAmount) {
     const cv = uintCV(microAmount);
     return cvToHex(cv); // proper Clarity hex for Leather/Xverse
+  }
+
+  // Encode principal as hex
+  encodePrincipal(address) {
+    const cv = standardPrincipalCV(address);
+    return cvToHex(cv);
   }
 
   // Extract txId from various response shapes
@@ -209,7 +215,9 @@ export class WalletManager {
     };
   }
 
+  // ──────────────────────────────────────────────────────────────
   // Send tip transaction
+  // ──────────────────────────────────────────────────────────────
   async sendTip(amount) {
     console.log('💸 Attempting to send tip:', amount, 'STX');
 
@@ -264,9 +272,9 @@ export class WalletManager {
         contract: contractId,
         functionName: 'send-tip',
         functionArgs: [argHex],
-        // IMPORTANT: Allow STX to move without explicit post-conditions
+        // Allow STX movement without explicit post-conditions
         postConditionMode: 'allow',
-        network: CONFIG.NETWORK.DEFAULT, // Leather ignores this but it's harmless
+        network: CONFIG.NETWORK.DEFAULT,
       };
 
       console.log('📤 Calling stx_callContract with params:', params);
@@ -337,9 +345,8 @@ export class WalletManager {
         contract: contractId,
         functionName: 'send-tip',
         functionArgs: [argHex],
-        // Mirror Leather behavior: allow asset movement without explicit PCs
         postConditionMode: 'allow',
-        network: CONFIG.NETWORK.DEFAULT, // Xverse will use its active network; extra field is safe
+        network: CONFIG.NETWORK.DEFAULT,
       };
 
       console.log('📤 Calling stx_callContract with params:', params);
@@ -370,6 +377,177 @@ export class WalletManager {
       console.error('❌ Xverse transaction failed:', error);
 
       let errorMessage = 'Transaction failed';
+
+      if (error.message) {
+        errorMessage = error.message;
+      } else if (error.error && error.error.message) {
+        errorMessage = error.error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error.toString && error.toString() !== '[object Object]') {
+        errorMessage = error.toString();
+      }
+
+      throw new Error(errorMessage);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // Withdraw all tips (owner-only)
+  // ──────────────────────────────────────────────────────────────
+  async withdraw() {
+    console.log('⬇️ Attempting withdrawal...');
+
+    if (!this.address) {
+      throw new Error('Wallet not connected');
+    }
+
+    if (this.address !== CONFIG.CONTRACT.OWNER) {
+      throw new Error('Only the contract owner can withdraw');
+    }
+
+    try {
+      if (this.walletType === 'leather') {
+        return await this.withdrawLeather(this.address);
+      } else if (this.walletType === 'xverse') {
+        return await this.withdrawXverse(this.address);
+      } else {
+        throw new Error('Unknown wallet type: ' + this.walletType);
+      }
+    } catch (error) {
+      console.error('❌ Withdraw error:', error);
+      throw error;
+    }
+  }
+
+  async withdrawLeather(recipient) {
+    console.log('🦊 Withdraw via Leather...');
+
+    if (typeof window === 'undefined') {
+      throw new Error('Wallets are only available in the browser');
+    }
+
+    const provider = window.LeatherProvider || window.HiroWalletProvider;
+
+    if (!provider) {
+      throw new Error('Leather provider not found');
+    }
+
+    try {
+      const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
+      const argHex = this.encodePrincipal(recipient);
+
+      console.log('📝 Contract:', contractId);
+      console.log('👤 Recipient principal:', recipient);
+      console.log('🔐 Hex-encoded principal:', argHex);
+
+      const params = {
+        contract: contractId,
+        functionName: 'withdraw',
+        functionArgs: [argHex],
+        postConditionMode: 'allow',
+        network: CONFIG.NETWORK.DEFAULT,
+      };
+
+      console.log('📤 Calling stx_callContract (withdraw) with params:', params);
+
+      const response = await provider.request('stx_callContract', params);
+      console.log('✅ Withdraw transaction response:', response);
+
+      if (response.error) {
+        const errorMsg =
+          response.error.message ||
+          response.error.toString() ||
+          'Withdraw transaction failed';
+        throw new Error(errorMsg);
+      }
+
+      const txid = this.extractTxId(response);
+
+      if (!txid) {
+        throw new Error('No transaction ID returned from Leather (withdraw)');
+      }
+
+      return {
+        success: true,
+        txId: txid,
+        walletType: 'leather',
+      };
+    } catch (error) {
+      console.error('❌ Leather withdraw transaction failed:', error);
+
+      let errorMessage = 'Withdraw transaction failed';
+
+      if (error.message) {
+        errorMessage = error.message;
+      } else if (error.error && error.error.message) {
+        errorMessage = error.error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error.toString && error.toString() !== '[object Object]') {
+        errorMessage = error.toString();
+      }
+
+      throw new Error(errorMessage);
+    }
+  }
+
+  async withdrawXverse(recipient) {
+    console.log('⚡ Withdraw via Xverse...');
+
+    if (typeof window === 'undefined') {
+      throw new Error('Wallets are only available in the browser');
+    }
+
+    if (!window.XverseProviders) {
+      throw new Error('Xverse provider not found');
+    }
+
+    try {
+      const stacksProvider = window.XverseProviders.StacksProvider;
+      const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
+      const argHex = this.encodePrincipal(recipient);
+
+      console.log('📝 Contract:', contractId);
+      console.log('👤 Recipient principal:', recipient);
+      console.log('🔐 Hex-encoded principal:', argHex);
+
+      const params = {
+        contract: contractId,
+        functionName: 'withdraw',
+        functionArgs: [argHex],
+        postConditionMode: 'allow',
+        network: CONFIG.NETWORK.DEFAULT,
+      };
+
+      console.log('📤 Calling stx_callContract (withdraw) with params:', params);
+
+      const response = await stacksProvider.request('stx_callContract', params);
+      console.log('✅ Withdraw transaction response:', response);
+
+      if (response.error) {
+        const errorMsg =
+          response.error.message ||
+          response.error.toString() ||
+          'Withdraw transaction failed';
+        throw new Error(errorMsg);
+      }
+
+      const txid = this.extractTxId(response);
+
+      if (!txid) {
+        throw new Error('No transaction ID returned from Xverse (withdraw)');
+      }
+
+      return {
+        success: true,
+        txId: txid,
+        walletType: 'xverse',
+      };
+    } catch (error) {
+      console.error('❌ Xverse withdraw transaction failed:', error);
+
+      let errorMessage = 'Withdraw transaction failed';
 
       if (error.message) {
         errorMessage = error.message;
