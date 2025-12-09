@@ -61,6 +61,8 @@ export class ContractManager {
           ? this.extractValue(ownerData.value, 'principal')
           : null;
 
+      console.log('📊 Raw contract data:', { balance, totalTips, owner });
+
       // Update cache (convert to STX for display)
       this.cache = {
         balance: microToStx(balance),
@@ -68,6 +70,8 @@ export class ContractManager {
         owner,
         lastUpdate: Date.now(),
       };
+
+      console.log('💾 Cached STX values:', this.cache);
 
       return this.cache;
     } catch (error) {
@@ -116,8 +120,7 @@ export class ContractManager {
     }
   }
 
-  // Extract value from Hiro call-read response
-  // For this app we only need uints and principals.
+  // Extract value from Hiro call-read response with better number parsing
   extractValue(clarityResponse, expectedType = 'uint') {
     if (!clarityResponse) return null;
 
@@ -128,13 +131,28 @@ export class ContractManager {
       const repr = result.trim();
 
       if (expectedType === 'uint') {
-        // "u123"
+        // "u123" format
         if (repr.startsWith('u')) {
-          return Number(repr.slice(1));
+          const numStr = repr.slice(1);
+          // Use BigInt for large numbers, then convert to regular number
+          try {
+            const bigNum = BigInt(numStr);
+            // Convert to number - this should handle large values properly
+            return Number(bigNum);
+          } catch (e) {
+            console.error('Failed to parse uint:', numStr, e);
+            return 0;
+          }
         }
-        // fallback: try parse as number
-        const num = Number(repr);
-        return Number.isFinite(num) ? num : 0;
+        
+        // Fallback: try direct parse
+        const parsed = parseInt(repr, 10);
+        if (Number.isFinite(parsed)) {
+          return parsed;
+        }
+        
+        console.warn('Could not parse uint from:', repr);
+        return 0;
       }
 
       if (expectedType === 'principal') {
@@ -153,9 +171,17 @@ export class ContractManager {
       if (typeof result.repr === 'string') {
         return this.extractValue({ result: result.repr }, expectedType);
       }
+      // Check for direct value field
+      if (typeof result.value !== 'undefined') {
+        if (expectedType === 'uint') {
+          return Number(result.value);
+        }
+        return result.value;
+      }
     }
 
-    return result;
+    console.warn('Unexpected result format:', result);
+    return expectedType === 'uint' ? 0 : result;
   }
 
   // Get contract balance
