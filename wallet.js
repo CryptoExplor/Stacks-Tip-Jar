@@ -1,4 +1,4 @@
-// wallet.js - Wallet connection and management (FIXED)
+// wallet.js - Wallet connection and management (PROPERLY FIXED)
 import { CONFIG } from './config.js';
 
 export class WalletManager {
@@ -195,7 +195,7 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Leather - PROPERLY FIXED
+  // Send tip via Leather - FIXED with hex encoding
   async sendTipLeather(microAmount) {
     console.log('🦊 Sending via Leather...');
     
@@ -205,62 +205,61 @@ export class WalletManager {
       throw new Error('Leather provider not found');
     }
 
-    return new Promise((resolve, reject) => {
-      try {
-        console.log('📝 Contract:', CONFIG.CONTRACT.ADDRESS, CONFIG.CONTRACT.NAME);
-        console.log('🔢 Amount (micro):', microAmount);
-        
-        // Properly formatted Clarity uint argument
-        const clarityAmount = {
-          type: 'uint',
-          value: microAmount.toString()
-        };
-        
-        const txOptions = {
-          contractAddress: CONFIG.CONTRACT.ADDRESS,
-          contractName: CONFIG.CONTRACT.NAME,
-          functionName: 'send-tip',
-          functionArgs: [clarityAmount],
-          network: CONFIG.NETWORK.DEFAULT,
-          appDetails: {
-            name: CONFIG.APP.NAME,
-            icon: window.location.origin + '/favicon.png'
-          },
-          onFinish: (data) => {
-            console.log('✅ Transaction broadcast:', data);
-            resolve({
-              success: true,
-              txId: data.txId,
-              walletType: 'leather'
-            });
-          },
-          onCancel: () => {
-            console.log('❌ Transaction cancelled by user');
-            reject(new Error('Transaction cancelled by user'));
-          }
-        };
-        
-        console.log('📤 Calling openContractCall with options:', txOptions);
-        
-        // Use the correct method - openContractCall
-        provider.request('openContractCall', txOptions)
-          .then(response => {
-            console.log('📨 Provider response:', response);
-            // The onFinish callback handles success
-          })
-          .catch(error => {
-            console.error('❌ Request error:', error);
-            reject(new Error(error.message || 'Transaction request failed'));
-          });
-        
-      } catch (error) {
-        console.error('❌ Leather transaction setup failed:', error);
-        reject(error);
+    // Check for Stacks transactions library
+    if (!window.stacksTransactions) {
+      throw new Error('Stacks transactions library not loaded. Add script tag to index.html');
+    }
+
+    const { uintCV, cvToHex } = window.stacksTransactions;
+    
+    if (!uintCV || !cvToHex) {
+      throw new Error('Missing uintCV or cvToHex from stacksTransactions');
+    }
+
+    try {
+      console.log('📝 Contract:', CONFIG.CONTRACT.ADDRESS, CONFIG.CONTRACT.NAME);
+      console.log('🔢 Amount (micro):', microAmount);
+      
+      // Convert to hex-encoded Clarity value
+      const clarityValue = uintCV(microAmount);
+      const hexArg = cvToHex(clarityValue);
+      
+      console.log('🔐 Hex-encoded argument:', hexArg);
+      
+      const params = {
+        contract: `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`,
+        functionName: 'send-tip',
+        functionArgs: [hexArg], // Array of hex strings
+        network: CONFIG.NETWORK.DEFAULT
+      };
+      
+      console.log('📤 Calling stx_callContract with params:', params);
+      
+      // Call the correct Leather API
+      const response = await provider.request('stx_callContract', params);
+      console.log('✅ Transaction response:', response);
+      
+      // Extract txid from response
+      const result = response.result || response;
+      const txid = result.txid || result.txId;
+      
+      if (!txid) {
+        throw new Error('No transaction ID returned from Leather');
       }
-    });
+      
+      return {
+        success: true,
+        txId: txid,
+        walletType: 'leather'
+      };
+      
+    } catch (error) {
+      console.error('❌ Leather transaction failed:', error);
+      throw error;
+    }
   }
 
-  // Send tip via Xverse - PROPERLY FIXED
+  // Send tip via Xverse - FIXED with hex encoding
   async sendTipXverse(microAmount) {
     console.log('⚡ Sending via Xverse...');
     
@@ -268,59 +267,59 @@ export class WalletManager {
       throw new Error('Xverse provider not found');
     }
 
-    return new Promise((resolve, reject) => {
-      try {
-        const stacksProvider = window.XverseProviders.StacksProvider;
-        console.log('📝 Contract:', CONFIG.CONTRACT.ADDRESS, CONFIG.CONTRACT.NAME);
-        console.log('🔢 Amount (micro):', microAmount);
-        
-        // Properly formatted Clarity uint argument for Xverse
-        const clarityAmount = {
-          type: 'uint',
-          value: microAmount.toString()
-        };
-        
-        const txOptions = {
-          contract: `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`,
-          functionName: 'send-tip',
-          functionArgs: [clarityAmount],
-          network: CONFIG.NETWORK.DEFAULT,
-          appDetails: {
-            name: CONFIG.APP.NAME,
-            icon: window.location.origin + '/favicon.png'
-          },
-          onFinish: (response) => {
-            console.log('✅ Transaction broadcast:', response);
-            resolve({
-              success: true,
-              txId: response.txid || response.txId,
-              walletType: 'xverse'
-            });
-          },
-          onCancel: () => {
-            console.log('❌ Transaction cancelled by user');
-            reject(new Error('Transaction cancelled by user'));
-          }
-        };
-        
-        console.log('📤 Calling stx_callContract with options:', txOptions);
-        
-        // Use the correct Xverse method
-        stacksProvider.request('stx_callContract', txOptions)
-          .then(response => {
-            console.log('📨 Provider response:', response);
-            // The onFinish callback handles success
-          })
-          .catch(error => {
-            console.error('❌ Request error:', error);
-            reject(new Error(error.message || 'Transaction request failed'));
-          });
-        
-      } catch (error) {
-        console.error('❌ Xverse transaction setup failed:', error);
-        reject(error);
+    // Check for Stacks transactions library
+    if (!window.stacksTransactions) {
+      throw new Error('Stacks transactions library not loaded. Add script tag to index.html');
+    }
+
+    const { uintCV, cvToHex } = window.stacksTransactions;
+    
+    if (!uintCV || !cvToHex) {
+      throw new Error('Missing uintCV or cvToHex from stacksTransactions');
+    }
+
+    try {
+      const stacksProvider = window.XverseProviders.StacksProvider;
+      console.log('📝 Contract:', CONFIG.CONTRACT.ADDRESS, CONFIG.CONTRACT.NAME);
+      console.log('🔢 Amount (micro):', microAmount);
+      
+      // Convert to hex-encoded Clarity value
+      const clarityValue = uintCV(microAmount);
+      const hexArg = cvToHex(clarityValue);
+      
+      console.log('🔐 Hex-encoded argument:', hexArg);
+      
+      const params = {
+        contract: `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`,
+        functionName: 'send-tip',
+        functionArgs: [hexArg], // Array of hex strings
+        network: CONFIG.NETWORK.DEFAULT
+      };
+      
+      console.log('📤 Calling stx_callContract with params:', params);
+      
+      // Call the Xverse API
+      const response = await stacksProvider.request('stx_callContract', params);
+      console.log('✅ Transaction response:', response);
+      
+      // Extract txid from response
+      const result = response.result || response;
+      const txid = result.txid || result.txId;
+      
+      if (!txid) {
+        throw new Error('No transaction ID returned from Xverse');
       }
-    });
+      
+      return {
+        success: true,
+        txId: txid,
+        walletType: 'xverse'
+      };
+      
+    } catch (error) {
+      console.error('❌ Xverse transaction failed:', error);
+      throw error;
+    }
   }
 }
 
