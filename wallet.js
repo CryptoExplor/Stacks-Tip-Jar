@@ -1,9 +1,6 @@
 // wallet.js - Wallet connection and management (FIXED)
-// - Uses @stacks/transactions for proper Clarity uint encoding
-// - No direct Buffer usage
-// - Safer window checks for SSR
 import { CONFIG } from './config.js';
-import { uintCV, cvToString } from '@stacks/transactions';
+import { uintCV, cvToHex } from '@stacks/transactions';
 
 export class WalletManager {
   constructor() {
@@ -66,13 +63,12 @@ export class WalletManager {
     };
   }
 
-  // Encode Clarity uint as hex using stacks.js (correct + Buffer-free)
+    // Encode Clarity uint as hex for stx_callContract
   encodeClarityUint(microAmount) {
-    // uintCV -> Clarity uint value
-    // cvToString -> hex-encoded Clarity value string (0x...)
     const cv = uintCV(microAmount);
-    return cvToString(cv);
+    return cvToHex(cv); // <- now proper hex for Leather/Xverse
   }
+
 
   // Extract txId from various response shapes
   extractTxId(response) {
