@@ -27,6 +27,9 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="/favicon.png" />
   
+  <!-- CRITICAL: Stacks Transactions Library - MUST BE LOADED BEFORE MODULE SCRIPTS -->
+  <script src="https://unpkg.com/@stacks/transactions@latest/dist/transactions.umd.js"></script>
+  
   <!-- Styles -->
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -137,7 +140,7 @@
     </footer>
   </div>
 
-  <!-- Scripts -->
+  <!-- Scripts - Module type for ES6 imports -->
   <script type="module" src="/main.js"></script>
 </body>
 </html>
