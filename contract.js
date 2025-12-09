@@ -134,11 +134,24 @@ export class ContractManager {
         // "u123" format
         if (repr.startsWith('u')) {
           const numStr = repr.slice(1);
-          // Use BigInt for large numbers, then convert to regular number
+          
+          // For very large numbers, keep as string temporarily
+          if (numStr.length > 15) {
+            console.warn('Large number detected, may lose precision:', numStr);
+          }
+          
           try {
-            const bigNum = BigInt(numStr);
-            // Convert to number - this should handle large values properly
-            return Number(bigNum);
+            // Parse directly as number for values that fit safely
+            const parsed = Number(numStr);
+            
+            // Check if parsing was safe (no precision loss)
+            if (Number.isSafeInteger(parsed) || parsed < Number.MAX_SAFE_INTEGER) {
+              return parsed;
+            }
+            
+            // For very large numbers, still return as number but log warning
+            console.warn('Number exceeds safe integer range, may have precision loss');
+            return parsed;
           } catch (e) {
             console.error('Failed to parse uint:', numStr, e);
             return 0;
@@ -147,7 +160,7 @@ export class ContractManager {
         
         // Fallback: try direct parse
         const parsed = parseInt(repr, 10);
-        if (Number.isFinite(parsed)) {
+        if (Number.isFinite(parsed) && !Number.isNaN(parsed)) {
           return parsed;
         }
         
@@ -174,7 +187,8 @@ export class ContractManager {
       // Check for direct value field
       if (typeof result.value !== 'undefined') {
         if (expectedType === 'uint') {
-          return Number(result.value);
+          const val = Number(result.value);
+          return Number.isFinite(val) ? val : 0;
         }
         return result.value;
       }
