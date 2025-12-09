@@ -1,6 +1,13 @@
-// wallet.js - Wallet connection and management (FIXED)
+// wallet.js - Wallet connection and management (FIXED WITH PROPER POST-CONDITIONS)
 import { CONFIG } from './config.js';
-import { uintCV, cvToHex } from '@stacks/transactions';
+import { 
+  uintCV, 
+  cvToHex,
+  PostConditionMode,
+  makeStandardSTXPostCondition,
+  FungibleConditionCode,
+  serializePostCondition
+} from '@stacks/transactions';
 
 export class WalletManager {
   constructor() {
@@ -196,7 +203,7 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Leather - FIXED without post-conditions
+  // Send tip via Leather - FIXED with proper serialized post-conditions
   async sendTipLeather(microAmount) {
     console.log('🦊 Sending via Leather...');
     
@@ -216,10 +223,25 @@ export class WalletManager {
       
       console.log('🔐 Hex-encoded argument:', hexArg);
       
+      // Create post-condition: sender must transfer exact amount of STX
+      const postCondition = makeStandardSTXPostCondition(
+        this.address,
+        FungibleConditionCode.Equal,
+        BigInt(microAmount)
+      );
+      
+      // Serialize post-condition to hex
+      const serializedPC = serializePostCondition(postCondition);
+      const hexPC = '0x' + Buffer.from(serializedPC).toString('hex');
+      
+      console.log('🛡️ Post-condition created and serialized:', hexPC);
+      
       const params = {
         contract: `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`,
         functionName: 'send-tip',
         functionArgs: [hexArg],
+        postConditions: [hexPC],
+        postConditionMode: PostConditionMode.Deny,
         network: CONFIG.NETWORK.DEFAULT
       };
       
@@ -249,7 +271,7 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Xverse - FIXED without post-conditions
+  // Send tip via Xverse - FIXED with proper serialized post-conditions
   async sendTipXverse(microAmount) {
     console.log('⚡ Sending via Xverse...');
     
@@ -268,10 +290,25 @@ export class WalletManager {
       
       console.log('🔐 Hex-encoded argument:', hexArg);
       
+      // Create post-condition: sender must transfer exact amount of STX
+      const postCondition = makeStandardSTXPostCondition(
+        this.address,
+        FungibleConditionCode.Equal,
+        BigInt(microAmount)
+      );
+      
+      // Serialize post-condition to hex
+      const serializedPC = serializePostCondition(postCondition);
+      const hexPC = '0x' + Buffer.from(serializedPC).toString('hex');
+      
+      console.log('🛡️ Post-condition created and serialized:', hexPC);
+      
       const params = {
         contract: `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`,
         functionName: 'send-tip',
         functionArgs: [hexArg],
+        postConditions: [hexPC],
+        postConditionMode: PostConditionMode.Deny,
         network: CONFIG.NETWORK.DEFAULT
       };
       
