@@ -1,4 +1,5 @@
 // contract.js - Smart contract interactions
+
 import { CONFIG, getNetworkEndpoint, microToStx } from './config.js';
 
 export class ContractManager {
@@ -7,7 +8,7 @@ export class ContractManager {
       balance: null,
       totalTips: null,
       owner: null,
-      lastUpdate: null
+      lastUpdate: null,
     };
     this.cacheTimeout = 10000; // 10 seconds
   }
@@ -24,7 +25,7 @@ export class ContractManager {
       balance: null,
       totalTips: null,
       owner: null,
-      lastUpdate: null
+      lastUpdate: null,
     };
   }
 
@@ -38,32 +39,34 @@ export class ContractManager {
     const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
 
     try {
-      // Fetch all data in parallel
+      // Fetch all data in parallel (output_type=repr for easy parsing)
       const [balanceData, tipsData, ownerData] = await Promise.allSettled([
         this.callReadOnly('get-contract-balance', [], network),
         this.callReadOnly('get-total-tips', [], network),
-        this.callReadOnly('get-owner', [], network)
+        this.callReadOnly('get-owner', [], network),
       ]);
 
-      // Process results
-      const balance = balanceData.status === 'fulfilled' 
-        ? this.extractValue(balanceData.value) 
-        : 0;
-      
-      const totalTips = tipsData.status === 'fulfilled'
-        ? this.extractValue(tipsData.value)
-        : 0;
-      
-      const owner = ownerData.status === 'fulfilled'
-        ? this.extractValue(ownerData.value)
-        : null;
+      const balance =
+        balanceData.status === 'fulfilled'
+          ? this.extractValue(balanceData.value, 'uint')
+          : 0;
 
-      // Update cache
+      const totalTips =
+        tipsData.status === 'fulfilled'
+          ? this.extractValue(tipsData.value, 'uint')
+          : 0;
+
+      const owner =
+        ownerData.status === 'fulfilled'
+          ? this.extractValue(ownerData.value, 'principal')
+          : null;
+
+      // Update cache (convert to STX for display)
       this.cache = {
         balance: microToStx(balance),
         totalTips: microToStx(totalTips),
         owner,
-        lastUpdate: Date.now()
+        lastUpdate: Date.now(),
       };
 
       return this.cache;
@@ -74,30 +77,35 @@ export class ContractManager {
   }
 
   // Call read-only contract function via Hiro API
-  async callReadOnly(functionName, functionArgs = [], network = CONFIG.NETWORK.DEFAULT) {
+  async callReadOnly(
+    functionName,
+    functionArgs = [],
+    network = CONFIG.NETWORK.DEFAULT,
+  ) {
     const endpoint = getNetworkEndpoint(network);
     const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
     const [contractAddress, contractName] = contractId.split('.');
 
-    const url = `${endpoint}/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`;
+    // Use output_type=repr so result is like "u123" or "'ST3...."
+    const url = `${endpoint}/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}?output_type=repr`;
 
     const body = {
       sender: contractAddress,
-      arguments: functionArgs
+      arguments: functionArgs, // hex-encoded args if needed; ours are []
     };
 
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Contract call failed: ${response.status} - ${errorText}`);
+        throw new Error(
+          `Contract call failed: ${response.status} - ${errorText}`,
+        );
       }
 
       const data = await response.json();
@@ -108,40 +116,46 @@ export class ContractManager {
     }
   }
 
-  // Extract value from Clarity response
-  extractValue(clarityResponse) {
+  // Extract value from Hiro call-read response
+  // For this app we only need uints and principals.
+  extractValue(clarityResponse, expectedType = 'uint') {
     if (!clarityResponse) return null;
 
-    // Handle different response formats
-    if (clarityResponse.okay !== undefined) {
-      clarityResponse = clarityResponse.okay;
+    // Hiro format: { okay: true, result: "u123" } or { okay: true, result: "'ST3..."}
+    const result = clarityResponse.result ?? clarityResponse;
+
+    if (typeof result === 'string') {
+      const repr = result.trim();
+
+      if (expectedType === 'uint') {
+        // "u123"
+        if (repr.startsWith('u')) {
+          return Number(repr.slice(1));
+        }
+        // fallback: try parse as number
+        const num = Number(repr);
+        return Number.isFinite(num) ? num : 0;
+      }
+
+      if (expectedType === 'principal') {
+        // "'ST3ZQ...": strip leading single quote
+        if (repr.startsWith("'")) {
+          return repr.slice(1);
+        }
+        return repr;
+      }
+
+      return repr;
     }
 
-    if (typeof clarityResponse === 'object') {
-      // Handle nested structures
-      if (clarityResponse.value !== undefined) {
-        return this.extractValue(clarityResponse.value);
-      }
-      
-      if (clarityResponse.uint !== undefined) {
-        return clarityResponse.uint;
-      }
-      
-      if (clarityResponse.int !== undefined) {
-        return clarityResponse.int;
-      }
-
-      if (clarityResponse.principal !== undefined) {
-        return clarityResponse.principal;
-      }
-
-      // Handle hex representation
-      if (clarityResponse.repr !== undefined) {
-        return clarityResponse.repr;
+    // Fallback for weird shapes: look for nested repr
+    if (result && typeof result === 'object') {
+      if (typeof result.repr === 'string') {
+        return this.extractValue({ result: result.repr }, expectedType);
       }
     }
 
-    return clarityResponse;
+    return result;
   }
 
   // Get contract balance
@@ -149,7 +163,6 @@ export class ContractManager {
     if (forceRefresh) {
       this.clearCache();
     }
-    
     const data = await this.fetchContractData(network);
     return data.balance;
   }
@@ -159,7 +172,6 @@ export class ContractManager {
     if (forceRefresh) {
       this.clearCache();
     }
-    
     const data = await this.fetchContractData(network);
     return data.totalTips;
   }
@@ -169,7 +181,6 @@ export class ContractManager {
     if (forceRefresh) {
       this.clearCache();
     }
-    
     const data = await this.fetchContractData(network);
     return data.owner;
   }
@@ -179,7 +190,6 @@ export class ContractManager {
     if (forceRefresh) {
       this.clearCache();
     }
-    
     return await this.fetchContractData(network);
   }
 
@@ -190,18 +200,15 @@ export class ContractManager {
 
     try {
       const response = await fetch(url);
-      
       if (!response.ok) {
         return { status: 'unknown', confirmed: false };
       }
-
       const data = await response.json();
-      
       return {
         status: data.tx_status,
         confirmed: data.tx_status === 'success',
         blockHeight: data.block_height,
-        fee: data.fee_rate
+        fee: data.fee_rate,
       };
     } catch (error) {
       console.error('Failed to verify transaction:', error);
