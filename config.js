@@ -34,7 +34,7 @@ export const CONFIG = {
   UI: {
     QUICK_AMOUNTS: [0.1, 0.5, 1, 5],
     MIN_TIP: 0.000001,
-    DECIMALS: 6
+    DECIMALS: 4  // ✅ Changed from 6 to 4 decimals
   },
 
   // Farcaster Frame support
@@ -65,7 +65,7 @@ export function microToStx(micro) {
   return Number(micro) / 1_000_000;
 }
 
-// Format STX for display
+// Format STX for display with 4 decimals
 export function formatStx(amount, decimals = CONFIG.UI.DECIMALS) {
   return Number(amount).toFixed(decimals) + ' STX';
 }
