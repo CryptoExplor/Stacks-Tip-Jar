@@ -1,5 +1,5 @@
-// ui.js - UI controller with wallet detection + owner withdraw
-import { CONFIG, formatStx } from './config.js';
+// ui.js - UI controller with wallet detection + owner withdraw + faucet
+import { CONFIG, formatStx, isFaucetAvailable } from './config.js';
 import { walletManager } from './wallet.js';
 import { contractManager } from './contract.js';
 
@@ -11,6 +11,7 @@ export class UIController {
       connected: false,
       stats: null,
     };
+    this.faucetTimer = null;
   }
 
   // Initialize UI
@@ -24,6 +25,10 @@ export class UIController {
     await this.waitForWallets();
     this.checkWalletAvailability();
     await this.loadInitialData();
+    
+    // Show/hide faucet based on network
+    this.updateFaucetVisibility();
+    
     console.log('✅ UI initialized');
   }
 
@@ -64,6 +69,10 @@ export class UIController {
       // Owner-only withdraw
       withdrawBtn: document.getElementById('withdrawBtn'),
 
+      // Faucet
+      faucetBtn: document.getElementById('faucetBtn'),
+      faucetSection: document.getElementById('faucetSection'),
+
       // Status
       status: document.getElementById('status'),
     };
@@ -93,6 +102,11 @@ export class UIController {
       this.withdraw(),
     );
 
+    // Faucet
+    this.elements.faucetBtn?.addEventListener('click', () =>
+      this.claimFaucet(),
+    );
+
     // Quick amount buttons
     this.elements.quickAmounts.forEach(btn => {
       btn.addEventListener('click', e => {
@@ -117,6 +131,7 @@ export class UIController {
       console.log('👛 Wallet state changed:', walletState);
       this.state.connected = walletState.connected;
       this.updateWalletUI(walletState);
+      this.updateFaucetButton();
     });
   }
 
@@ -160,6 +175,73 @@ export class UIController {
       this.elements.networkDisplay.textContent =
         network.charAt(0).toUpperCase() + network.slice(1);
     }
+  }
+
+  // Update faucet visibility based on network
+  updateFaucetVisibility() {
+    if (this.elements.faucetSection) {
+      if (isFaucetAvailable()) {
+        this.elements.faucetSection.style.display = 'block';
+      } else {
+        this.elements.faucetSection.style.display = 'none';
+      }
+    }
+  }
+
+  // Update faucet button state
+  updateFaucetButton() {
+    if (!this.elements.faucetBtn) return;
+
+    const faucetStatus = walletManager.canClaimFaucet();
+    
+    if (faucetStatus.canClaim) {
+      this.elements.faucetBtn.disabled = false;
+      this.elements.faucetBtn.innerHTML = '<span class="btn-icon">💰</span><span>Claim 500 STX from Faucet</span>';
+      
+      // Clear any existing timer
+      if (this.faucetTimer) {
+        clearInterval(this.faucetTimer);
+        this.faucetTimer = null;
+      }
+    } else if (faucetStatus.remainingSeconds) {
+      // Start countdown timer
+      this.elements.faucetBtn.disabled = true;
+      this.startFaucetCountdown(faucetStatus.remainingSeconds);
+    } else {
+      this.elements.faucetBtn.disabled = true;
+      this.elements.faucetBtn.innerHTML = '<span class="btn-icon">💰</span><span>Connect wallet to claim</span>';
+    }
+  }
+
+  // Start faucet countdown
+  startFaucetCountdown(seconds) {
+    if (this.faucetTimer) {
+      clearInterval(this.faucetTimer);
+    }
+
+    let remaining = seconds;
+    
+    const updateButton = () => {
+      if (remaining <= 0) {
+        clearInterval(this.faucetTimer);
+        this.faucetTimer = null;
+        this.updateFaucetButton();
+        return;
+      }
+      
+      const mins = Math.floor(remaining / 60);
+      const secs = remaining % 60;
+      const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+      
+      if (this.elements.faucetBtn) {
+        this.elements.faucetBtn.innerHTML = `<span class="btn-icon">⏰</span><span>Wait ${timeStr}</span>`;
+      }
+      
+      remaining--;
+    };
+
+    updateButton();
+    this.faucetTimer = setInterval(updateButton, 1000);
   }
 
   // Connect Leather wallet
@@ -207,6 +289,12 @@ export class UIController {
     console.log('🔌 Disconnect clicked');
     walletManager.disconnect();
     this.showStatus('Wallet disconnected', 'info');
+    
+    // Clear faucet timer
+    if (this.faucetTimer) {
+      clearInterval(this.faucetTimer);
+      this.faucetTimer = null;
+    }
   }
 
   // Update wallet UI
@@ -243,6 +331,50 @@ export class UIController {
       if (this.elements.withdrawBtn) {
         this.elements.withdrawBtn.style.display = 'none';
       }
+    }
+  }
+
+  // Claim faucet
+  async claimFaucet() {
+    console.log('💰 Claim faucet clicked');
+
+    if (!walletManager.address) {
+      this.showStatus('Please connect your wallet first', 'error');
+      return;
+    }
+
+    this.setLoading(true);
+    this.showStatus('Claiming from faucet...', 'info');
+
+    try {
+      const result = await walletManager.claimFaucet();
+      console.log('✅ Faucet claim result:', result);
+
+      const shortTxId = result.txId
+        ? result.txId.substring(0, 8) + '...'
+        : '';
+
+      this.showStatus(
+        `Claimed 500 STX! ${shortTxId ? 'TX: ' + shortTxId : ''}`,
+        'success',
+      );
+
+      // Update faucet button state
+      this.updateFaucetButton();
+
+      // Refresh stats after a delay
+      setTimeout(
+        () => this.refreshStats(),
+        CONFIG.TX.POLLING_INTERVAL,
+      );
+    } catch (error) {
+      console.error('❌ Faucet claim failed:', error);
+      this.showStatus(
+        error.message || 'Failed to claim from faucet',
+        'error',
+      );
+    } finally {
+      this.setLoading(false);
     }
   }
 
@@ -431,6 +563,7 @@ export class UIController {
       this.elements.sendTipBtn,
       this.elements.refreshBtn,
       this.elements.withdrawBtn,
+      this.elements.faucetBtn,
     ];
 
     buttons.forEach(btn => {
@@ -438,6 +571,11 @@ export class UIController {
         btn.disabled = loading;
       }
     });
+    
+    // Update faucet button state after loading
+    if (!loading) {
+      setTimeout(() => this.updateFaucetButton(), 100);
+    }
   }
 }
 
