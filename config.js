@@ -16,6 +16,14 @@ export const CONFIG = {
     }
   },
 
+  // Faucet configuration
+  FAUCET: {
+    ENABLED: true, // Only show on testnet
+    ENDPOINT: 'https://api.testnet.hiro.so/extended/v1/faucets/stx',
+    COOLDOWN: 300000, // 5 minutes in milliseconds
+    AMOUNT: 500 // Expected STX amount from faucet
+  },
+
   // App metadata
   APP: {
     NAME: 'Stacks Tip Jar',
@@ -34,7 +42,7 @@ export const CONFIG = {
   UI: {
     QUICK_AMOUNTS: [0.1, 0.5, 1, 5],
     MIN_TIP: 0.000001,
-    DECIMALS: 4  // ✅ Changed from 6 to 4 decimals
+    DECIMALS: 6  // Back to 6 decimals for proper display
   },
 
   // Farcaster Frame support
@@ -60,14 +68,23 @@ export function stxToMicro(stx) {
   return Math.floor(Number(stx) * 1_000_000);
 }
 
-// Convert micro-STX to STX
+// Convert micro-STX to STX with proper handling
 export function microToStx(micro) {
-  return Number(micro) / 1_000_000;
+  // Ensure we're working with a valid number
+  const num = Number(micro);
+  if (!Number.isFinite(num) || Number.isNaN(num)) {
+    return 0;
+  }
+  return num / 1_000_000;
 }
 
-// Format STX for display with 4 decimals
+// Format STX for display with proper decimals
 export function formatStx(amount, decimals = CONFIG.UI.DECIMALS) {
-  return Number(amount).toFixed(decimals) + ' STX';
+  const num = Number(amount);
+  if (!Number.isFinite(num) || Number.isNaN(num)) {
+    return '0.000000 STX';
+  }
+  return num.toFixed(decimals) + ' STX';
 }
 
 // Validate Stacks address
@@ -85,4 +102,9 @@ export function isValidStacksAddress(address, network = CONFIG.NETWORK.DEFAULT) 
 export function shortAddress(address, start = 6, end = 4) {
   if (!address) return '';
   return `${address.slice(0, start)}...${address.slice(-end)}`;
+}
+
+// Check if faucet should be available
+export function isFaucetAvailable() {
+  return CONFIG.FAUCET.ENABLED && CONFIG.NETWORK.DEFAULT === 'testnet';
 }
