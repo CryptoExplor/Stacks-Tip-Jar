@@ -1,6 +1,6 @@
-// wallet.js - Wallet connection and management (FIXED)
+// wallet.js - Wallet connection and management (FIXED with STX post-conditions)
 import { CONFIG } from './config.js';
-import { uintCV, cvToHex } from '@stacks/transactions';
+import { uintCV, cvToHex, Pc, postConditionToHex } from '@stacks/transactions';
 
 export class WalletManager {
   constructor() {
@@ -63,18 +63,24 @@ export class WalletManager {
     };
   }
 
-    // Encode Clarity uint as hex for stx_callContract
+  // Encode Clarity uint as hex for stx_callContract
   encodeClarityUint(microAmount) {
     const cv = uintCV(microAmount);
-    return cvToHex(cv); // <- now proper hex for Leather/Xverse
+    return cvToHex(cv); // e.g. "0x01000000..."
   }
 
+  // Build STX post-condition hex: sender will send <= microAmount uSTX
+  buildStxPostConditionHex(address, microAmount) {
+    const pc = Pc.principal(address)
+      .willSendLte(microAmount)
+      .ustx(); // STX post-condition
+    return postConditionToHex(pc);
+  }
 
   // Extract txId from various response shapes
   extractTxId(response) {
     if (!response) return null;
 
-    // Sats Connect-style: { status, result: { txid } }
     if (response.txid || response.txId) {
       return response.txid || response.txId;
     }
@@ -238,7 +244,7 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Leather
+  // Send tip via Leather (with STX post-condition)
   async sendTipLeather(microAmount) {
     console.log('🦊 Sending via Leather...');
 
@@ -255,16 +261,21 @@ export class WalletManager {
     try {
       const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
       const argHex = this.encodeClarityUint(microAmount);
+      const stxPcHex = this.buildStxPostConditionHex(this.address, microAmount);
 
       console.log('📝 Contract:', contractId);
       console.log('🔢 Amount (micro):', microAmount);
       console.log('🔐 Hex-encoded argument:', argHex);
+      console.log('🛡️ STX post-condition (hex):', stxPcHex);
 
       const params = {
         contract: contractId,
         functionName: 'send-tip',
         functionArgs: [argHex],
-        network: CONFIG.NETWORK.DEFAULT, // Leather ignores this but harmless
+        // Explicitly allow this STX movement via post-condition
+        postConditions: [stxPcHex],
+        postConditionMode: 'deny', // strict: only this STX move allowed
+        network: CONFIG.NETWORK.DEFAULT, // Leather may ignore, but safe
       };
 
       console.log('📤 Calling stx_callContract with params:', params);
@@ -310,7 +321,7 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Xverse
+  // Send tip via Xverse (same post-condition logic)
   async sendTipXverse(microAmount) {
     console.log('⚡ Sending via Xverse...');
 
@@ -326,16 +337,20 @@ export class WalletManager {
       const stacksProvider = window.XverseProviders.StacksProvider;
       const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
       const argHex = this.encodeClarityUint(microAmount);
+      const stxPcHex = this.buildStxPostConditionHex(this.address, microAmount);
 
       console.log('📝 Contract:', contractId);
       console.log('🔢 Amount (micro):', microAmount);
       console.log('🔐 Hex-encoded argument:', argHex);
+      console.log('🛡️ STX post-condition (hex):', stxPcHex);
 
       const params = {
         contract: contractId,
         functionName: 'send-tip',
         functionArgs: [argHex],
-        network: CONFIG.NETWORK.DEFAULT, // Xverse will use current network; extra field is safe
+        postConditions: [stxPcHex],
+        postConditionMode: 'deny',
+        network: CONFIG.NETWORK.DEFAULT,
       };
 
       console.log('📤 Calling stx_callContract with params:', params);
