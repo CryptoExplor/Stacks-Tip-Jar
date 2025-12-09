@@ -1,6 +1,12 @@
-// wallet.js - Wallet connection and management (FIXED WITH ES MODULE IMPORT)
+// wallet.js - Wallet connection and management (FIXED WITH POST-CONDITIONS)
 import { CONFIG } from './config.js';
-import { uintCV, cvToHex } from '@stacks/transactions';
+import { 
+  uintCV, 
+  cvToHex, 
+  PostConditionMode,
+  makeStandardSTXPostCondition,
+  FungibleConditionCode
+} from '@stacks/transactions';
 
 export class WalletManager {
   constructor() {
@@ -196,7 +202,7 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Leather - FIXED with proper hex encoding
+  // Send tip via Leather - FIXED with post-conditions
   async sendTipLeather(microAmount) {
     console.log('🦊 Sending via Leather...');
     
@@ -216,10 +222,21 @@ export class WalletManager {
       
       console.log('🔐 Hex-encoded argument:', hexArg);
       
+      // Create post-condition: sender must transfer exact amount of STX
+      const postCondition = makeStandardSTXPostCondition(
+        this.address,
+        FungibleConditionCode.Equal,
+        microAmount
+      );
+      
+      console.log('🛡️ Post-condition created:', postCondition);
+      
       const params = {
         contract: `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`,
         functionName: 'send-tip',
         functionArgs: [hexArg],
+        postConditions: [cvToHex(postCondition)], // Encode post-condition as hex
+        postConditionMode: PostConditionMode.Deny, // Deny if post-conditions fail
         network: CONFIG.NETWORK.DEFAULT
       };
       
@@ -249,7 +266,7 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Xverse - FIXED with proper hex encoding
+  // Send tip via Xverse - FIXED with post-conditions
   async sendTipXverse(microAmount) {
     console.log('⚡ Sending via Xverse...');
     
@@ -268,10 +285,21 @@ export class WalletManager {
       
       console.log('🔐 Hex-encoded argument:', hexArg);
       
+      // Create post-condition: sender must transfer exact amount of STX
+      const postCondition = makeStandardSTXPostCondition(
+        this.address,
+        FungibleConditionCode.Equal,
+        microAmount
+      );
+      
+      console.log('🛡️ Post-condition created:', postCondition);
+      
       const params = {
         contract: `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`,
         functionName: 'send-tip',
         functionArgs: [hexArg],
+        postConditions: [cvToHex(postCondition)], // Encode post-condition as hex
+        postConditionMode: PostConditionMode.Deny, // Deny if post-conditions fail
         network: CONFIG.NETWORK.DEFAULT
       };
       
