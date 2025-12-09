@@ -1,4 +1,4 @@
-// wallet.js - Wallet connection and management (with Withdraw support)
+// wallet.js - Wallet connection and management (with Withdraw + Faucet support)
 import { CONFIG } from './config.js';
 import { uintCV, cvToHex, standardPrincipalCV } from '@stacks/transactions';
 
@@ -8,6 +8,7 @@ export class WalletManager {
     this.walletType = null;
     this.listeners = [];
     this.isReady = false;
+    this.lastFaucetClaim = null;
   }
 
   // Wait for wallet providers to load (browser only)
@@ -66,7 +67,7 @@ export class WalletManager {
   // Encode Clarity uint as hex for stx_callContract
   encodeClarityUint(microAmount) {
     const cv = uintCV(microAmount);
-    return cvToHex(cv); // proper Clarity hex for Leather/Xverse
+    return cvToHex(cv);
   }
 
   // Encode principal as hex
@@ -216,6 +217,89 @@ export class WalletManager {
   }
 
   // ──────────────────────────────────────────────────────────────
+  // Claim testnet STX from faucet
+  // ──────────────────────────────────────────────────────────────
+  async claimFaucet() {
+    console.log('💰 Attempting to claim from faucet...');
+
+    if (!this.address) {
+      throw new Error('Wallet not connected');
+    }
+
+    if (CONFIG.NETWORK.DEFAULT !== 'testnet') {
+      throw new Error('Faucet is only available on testnet');
+    }
+
+    // Check cooldown
+    if (this.lastFaucetClaim) {
+      const timeSince = Date.now() - this.lastFaucetClaim;
+      if (timeSince < CONFIG.FAUCET.COOLDOWN) {
+        const remainingSeconds = Math.ceil((CONFIG.FAUCET.COOLDOWN - timeSince) / 1000);
+        throw new Error(`Please wait ${remainingSeconds} seconds before claiming again`);
+      }
+    }
+
+    try {
+      const url = `${CONFIG.FAUCET.ENDPOINT}?address=${this.address}`;
+      console.log('📡 Calling faucet:', url);
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          throw new Error('Faucet rate limit reached. Please try again later.');
+        }
+        const errorText = await response.text();
+        throw new Error(`Faucet request failed: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Faucet response:', data);
+
+      // Update last claim time
+      this.lastFaucetClaim = Date.now();
+
+      // Extract transaction info
+      const txId = data.txId || data.txid || data.success?.txId || data.success?.txid;
+
+      return {
+        success: true,
+        txId: txId,
+        message: `Claimed ${CONFIG.FAUCET.AMOUNT} STX from faucet`,
+      };
+    } catch (error) {
+      console.error('❌ Faucet claim failed:', error);
+      throw error;
+    }
+  }
+
+  // Check if faucet can be claimed
+  canClaimFaucet() {
+    if (!this.address || CONFIG.NETWORK.DEFAULT !== 'testnet') {
+      return { canClaim: false, reason: 'Not connected or not on testnet' };
+    }
+
+    if (this.lastFaucetClaim) {
+      const timeSince = Date.now() - this.lastFaucetClaim;
+      if (timeSince < CONFIG.FAUCET.COOLDOWN) {
+        const remainingSeconds = Math.ceil((CONFIG.FAUCET.COOLDOWN - timeSince) / 1000);
+        return { 
+          canClaim: false, 
+          reason: `Wait ${remainingSeconds}s`,
+          remainingSeconds 
+        };
+      }
+    }
+
+    return { canClaim: true };
+  }
+
+  // ──────────────────────────────────────────────────────────────
   // Send tip transaction
   // ──────────────────────────────────────────────────────────────
   async sendTip(amount) {
@@ -272,7 +356,6 @@ export class WalletManager {
         contract: contractId,
         functionName: 'send-tip',
         functionArgs: [argHex],
-        // Allow STX movement without explicit post-conditions
         postConditionMode: 'allow',
         network: CONFIG.NETWORK.DEFAULT,
       };
