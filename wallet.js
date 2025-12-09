@@ -1,4 +1,4 @@
-// wallet.js - Wallet connection and management (TRANSACTION FIX)
+// wallet.js - Wallet connection and management (FIXED)
 import { CONFIG } from './config.js';
 
 export class WalletManager {
@@ -9,7 +9,7 @@ export class WalletManager {
     this.isReady = false;
   }
 
-  // Wait for wallet providers to load (PUBLIC METHOD)
+  // Wait for wallet providers to load
   async waitForWallets() {
     let attempts = 0;
     const maxAttempts = 20;
@@ -59,7 +59,6 @@ export class WalletManager {
   async connectLeather() {
     console.log('🔌 Attempting Leather connection...');
     
-    // Check for Leather or Hiro wallet
     const provider = window.LeatherProvider || window.HiroWalletProvider;
     
     if (!provider) {
@@ -88,7 +87,6 @@ export class WalletManager {
         }
       });
       
-      // Fallback to any STX address
       const fallbackAddress = addresses.find(addr => addr.symbol === 'STX');
       const finalAddress = stacksAddress || fallbackAddress;
 
@@ -197,7 +195,7 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Leather - FIXED: Using openContractCall
+  // Send tip via Leather - PROPERLY FIXED
   async sendTipLeather(microAmount) {
     console.log('🦊 Sending via Leather...');
     
@@ -209,22 +207,27 @@ export class WalletManager {
 
     return new Promise((resolve, reject) => {
       try {
-        const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
-        console.log('📝 Contract:', contractId);
+        console.log('📝 Contract:', CONFIG.CONTRACT.ADDRESS, CONFIG.CONTRACT.NAME);
         console.log('🔢 Amount (micro):', microAmount);
+        
+        // Properly formatted Clarity uint argument
+        const clarityAmount = {
+          type: 'uint',
+          value: microAmount.toString()
+        };
         
         const txOptions = {
           contractAddress: CONFIG.CONTRACT.ADDRESS,
           contractName: CONFIG.CONTRACT.NAME,
           functionName: 'send-tip',
-          functionArgs: [`u${microAmount}`],
+          functionArgs: [clarityAmount],
           network: CONFIG.NETWORK.DEFAULT,
           appDetails: {
             name: CONFIG.APP.NAME,
-            icon: CONFIG.APP.URL + '/icon.png'
+            icon: window.location.origin + '/favicon.png'
           },
           onFinish: (data) => {
-            console.log('✅ Transaction finished:', data);
+            console.log('✅ Transaction broadcast:', data);
             resolve({
               success: true,
               txId: data.txId,
@@ -237,19 +240,18 @@ export class WalletManager {
           }
         };
         
-        console.log('📤 Opening contract call popup...');
+        console.log('📤 Calling openContractCall with options:', txOptions);
         
-        // This is the correct method that opens the popup
-        provider.request('stx_callContract', txOptions).then(response => {
-          console.log('📨 Provider response:', response);
-          
-          if (response.error) {
-            reject(new Error(response.error.message || 'Transaction failed'));
-          }
-        }).catch(error => {
-          console.error('❌ Request error:', error);
-          reject(error);
-        });
+        // Use the correct method - openContractCall
+        provider.request('openContractCall', txOptions)
+          .then(response => {
+            console.log('📨 Provider response:', response);
+            // The onFinish callback handles success
+          })
+          .catch(error => {
+            console.error('❌ Request error:', error);
+            reject(new Error(error.message || 'Transaction request failed'));
+          });
         
       } catch (error) {
         console.error('❌ Leather transaction setup failed:', error);
@@ -258,7 +260,7 @@ export class WalletManager {
     });
   }
 
-  // Send tip via Xverse - FIXED: Using proper Xverse API
+  // Send tip via Xverse - PROPERLY FIXED
   async sendTipXverse(microAmount) {
     console.log('⚡ Sending via Xverse...');
     
@@ -269,20 +271,26 @@ export class WalletManager {
     return new Promise((resolve, reject) => {
       try {
         const stacksProvider = window.XverseProviders.StacksProvider;
-        const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
-        console.log('📝 Contract:', contractId);
+        console.log('📝 Contract:', CONFIG.CONTRACT.ADDRESS, CONFIG.CONTRACT.NAME);
         console.log('🔢 Amount (micro):', microAmount);
         
+        // Properly formatted Clarity uint argument for Xverse
+        const clarityAmount = {
+          type: 'uint',
+          value: microAmount.toString()
+        };
+        
         const txOptions = {
-          contract: contractId,
+          contract: `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`,
           functionName: 'send-tip',
-          functionArgs: [`u${microAmount}`],
+          functionArgs: [clarityAmount],
+          network: CONFIG.NETWORK.DEFAULT,
           appDetails: {
             name: CONFIG.APP.NAME,
-            icon: CONFIG.APP.URL + '/icon.png'
+            icon: window.location.origin + '/favicon.png'
           },
           onFinish: (response) => {
-            console.log('✅ Transaction finished:', response);
+            console.log('✅ Transaction broadcast:', response);
             resolve({
               success: true,
               txId: response.txid || response.txId,
@@ -295,19 +303,18 @@ export class WalletManager {
           }
         };
         
-        console.log('📤 Opening contract call popup...');
+        console.log('📤 Calling stx_callContract with options:', txOptions);
         
-        // This opens the Xverse popup
-        stacksProvider.request('stx_callContract', txOptions).then(response => {
-          console.log('📨 Provider response:', response);
-          
-          if (response.error) {
-            reject(new Error(response.error.message || 'Transaction failed'));
-          }
-        }).catch(error => {
-          console.error('❌ Request error:', error);
-          reject(error);
-        });
+        // Use the correct Xverse method
+        stacksProvider.request('stx_callContract', txOptions)
+          .then(response => {
+            console.log('📨 Provider response:', response);
+            // The onFinish callback handles success
+          })
+          .catch(error => {
+            console.error('❌ Request error:', error);
+            reject(new Error(error.message || 'Transaction request failed'));
+          });
         
       } catch (error) {
         console.error('❌ Xverse transaction setup failed:', error);
