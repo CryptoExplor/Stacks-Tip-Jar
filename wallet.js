@@ -1,6 +1,6 @@
-// wallet.js - Wallet connection and management (FIXED with STX post-conditions)
+// wallet.js - Wallet connection and management (FIXED with STX postConditionMode = 'allow')
 import { CONFIG } from './config.js';
-import { uintCV, cvToHex, Pc, postConditionToHex } from '@stacks/transactions';
+import { uintCV, cvToHex } from '@stacks/transactions';
 
 export class WalletManager {
   constructor() {
@@ -66,25 +66,19 @@ export class WalletManager {
   // Encode Clarity uint as hex for stx_callContract
   encodeClarityUint(microAmount) {
     const cv = uintCV(microAmount);
-    return cvToHex(cv); // e.g. "0x01000000..."
-  }
-
-  // Build STX post-condition hex: sender will send <= microAmount uSTX
-  buildStxPostConditionHex(address, microAmount) {
-    const pc = Pc.principal(address)
-      .willSendLte(microAmount)
-      .ustx(); // STX post-condition
-    return postConditionToHex(pc);
+    return cvToHex(cv); // proper Clarity hex for Leather/Xverse
   }
 
   // Extract txId from various response shapes
   extractTxId(response) {
     if (!response) return null;
 
+    // Direct txid/txId
     if (response.txid || response.txId) {
       return response.txid || response.txId;
     }
 
+    // Nested in result
     if (response.result && (response.result.txid || response.result.txId)) {
       return response.result.txid || response.result.txId;
     }
@@ -244,7 +238,7 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Leather (with STX post-condition)
+  // Send tip via Leather
   async sendTipLeather(microAmount) {
     console.log('🦊 Sending via Leather...');
 
@@ -261,21 +255,18 @@ export class WalletManager {
     try {
       const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
       const argHex = this.encodeClarityUint(microAmount);
-      const stxPcHex = this.buildStxPostConditionHex(this.address, microAmount);
 
       console.log('📝 Contract:', contractId);
       console.log('🔢 Amount (micro):', microAmount);
       console.log('🔐 Hex-encoded argument:', argHex);
-      console.log('🛡️ STX post-condition (hex):', stxPcHex);
 
       const params = {
         contract: contractId,
         functionName: 'send-tip',
         functionArgs: [argHex],
-        // Explicitly allow this STX movement via post-condition
-        postConditions: [stxPcHex],
-        postConditionMode: 'deny', // strict: only this STX move allowed
-        network: CONFIG.NETWORK.DEFAULT, // Leather may ignore, but safe
+        // IMPORTANT: Allow STX to move without explicit post-conditions
+        postConditionMode: 'allow',
+        network: CONFIG.NETWORK.DEFAULT, // Leather ignores this but it's harmless
       };
 
       console.log('📤 Calling stx_callContract with params:', params);
@@ -321,7 +312,7 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Xverse (same post-condition logic)
+  // Send tip via Xverse
   async sendTipXverse(microAmount) {
     console.log('⚡ Sending via Xverse...');
 
@@ -337,20 +328,18 @@ export class WalletManager {
       const stacksProvider = window.XverseProviders.StacksProvider;
       const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
       const argHex = this.encodeClarityUint(microAmount);
-      const stxPcHex = this.buildStxPostConditionHex(this.address, microAmount);
 
       console.log('📝 Contract:', contractId);
       console.log('🔢 Amount (micro):', microAmount);
       console.log('🔐 Hex-encoded argument:', argHex);
-      console.log('🛡️ STX post-condition (hex):', stxPcHex);
 
       const params = {
         contract: contractId,
         functionName: 'send-tip',
         functionArgs: [argHex],
-        postConditions: [stxPcHex],
-        postConditionMode: 'deny',
-        network: CONFIG.NETWORK.DEFAULT,
+        // Mirror Leather behavior: allow asset movement without explicit PCs
+        postConditionMode: 'allow',
+        network: CONFIG.NETWORK.DEFAULT, // Xverse will use its active network; extra field is safe
       };
 
       console.log('📤 Calling stx_callContract with params:', params);
