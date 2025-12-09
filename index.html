@@ -27,8 +27,14 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="/favicon.png" />
   
-  <!-- CRITICAL: Stacks Transactions Library - MUST BE LOADED BEFORE MODULE SCRIPTS -->
-  <script src="https://unpkg.com/@stacks/transactions@latest/dist/transactions.umd.js"></script>
+  <!--Import map for ES modules -->
+  <script type="importmap">
+    {
+      "imports": {
+        "@stacks/transactions": "https://esm.sh/@stacks/transactions@6.13.0"
+      }
+    }
+  </script>
   
   <!-- Styles -->
   <link rel="stylesheet" href="/styles.css" />
@@ -133,7 +139,7 @@
     <footer class="footer">
       <p>Built on <strong>Stacks</strong> • Secured by <strong>Bitcoin</strong></p>
       <p class="footer-links">
-        <a href="https://github.com/yourusername/stacks-tip-jar" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/CryptoExplor/stacks-tip-jar" target="_blank" rel="noopener">GitHub</a>
         <span>•</span>
         <a href="https://stacks.co" target="_blank" rel="noopener">Learn about Stacks</a>
       </p>
