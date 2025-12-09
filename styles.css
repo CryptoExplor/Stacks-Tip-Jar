@@ -16,6 +16,7 @@
   --error: #ef4444;
   --warning: #f59e0b;
   --info: #3b82f6;
+  --faucet: #8b5cf6;
   
   /* Neutral colors */
   --bg-primary: #ffffff;
@@ -196,6 +197,50 @@ h1 {
   font-weight: 600;
   color: var(--text-primary);
   font-size: 14px;
+}
+
+/* Faucet section */
+.faucet-section {
+  background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
+  border: 2px solid var(--faucet);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-2xl);
+  animation: slideDown 0.3s ease;
+}
+
+.faucet-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+  color: #6b21a8;
+}
+
+.faucet-icon {
+  font-size: 24px;
+}
+
+.faucet-text {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.btn-faucet {
+  background: linear-gradient(135deg, var(--faucet) 0%, #7c3aed 100%);
+  color: white;
+  width: 100%;
+  margin-bottom: 0 !important;
+}
+
+.btn-faucet:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(139, 92, 246, 0.4);
+}
+
+.btn-faucet:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* Sections */
@@ -524,6 +569,15 @@ input::placeholder {
 
   .wallet-address {
     color: #93c5fd;
+  }
+
+  .faucet-section {
+    background: linear-gradient(135deg, #2e1065 0%, #4c1d95 100%);
+    border-color: #7c3aed;
+  }
+
+  .faucet-info {
+    color: #c4b5fd;
   }
 
   .install-notice {
