@@ -1,5 +1,6 @@
-// wallet.js - Wallet connection and management (PROPERLY FIXED)
+// wallet.js - Wallet connection and management (FIXED WITH ES MODULE IMPORT)
 import { CONFIG } from './config.js';
+import { uintCV, cvToHex } from '@stacks/transactions';
 
 export class WalletManager {
   constructor() {
@@ -195,7 +196,7 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Leather - FIXED with hex encoding
+  // Send tip via Leather - FIXED with proper hex encoding
   async sendTipLeather(microAmount) {
     console.log('🦊 Sending via Leather...');
     
@@ -203,17 +204,6 @@ export class WalletManager {
     
     if (!provider) {
       throw new Error('Leather provider not found');
-    }
-
-    // Check for Stacks transactions library
-    if (!window.stacksTransactions) {
-      throw new Error('Stacks transactions library not loaded. Add script tag to index.html');
-    }
-
-    const { uintCV, cvToHex } = window.stacksTransactions;
-    
-    if (!uintCV || !cvToHex) {
-      throw new Error('Missing uintCV or cvToHex from stacksTransactions');
     }
 
     try {
@@ -229,13 +219,13 @@ export class WalletManager {
       const params = {
         contract: `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`,
         functionName: 'send-tip',
-        functionArgs: [hexArg], // Array of hex strings
+        functionArgs: [hexArg],
         network: CONFIG.NETWORK.DEFAULT
       };
       
       console.log('📤 Calling stx_callContract with params:', params);
       
-      // Call the correct Leather API
+      // Call the Leather API
       const response = await provider.request('stx_callContract', params);
       console.log('✅ Transaction response:', response);
       
@@ -259,23 +249,12 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Xverse - FIXED with hex encoding
+  // Send tip via Xverse - FIXED with proper hex encoding
   async sendTipXverse(microAmount) {
     console.log('⚡ Sending via Xverse...');
     
     if (!window.XverseProviders) {
       throw new Error('Xverse provider not found');
-    }
-
-    // Check for Stacks transactions library
-    if (!window.stacksTransactions) {
-      throw new Error('Stacks transactions library not loaded. Add script tag to index.html');
-    }
-
-    const { uintCV, cvToHex } = window.stacksTransactions;
-    
-    if (!uintCV || !cvToHex) {
-      throw new Error('Missing uintCV or cvToHex from stacksTransactions');
     }
 
     try {
@@ -292,7 +271,7 @@ export class WalletManager {
       const params = {
         contract: `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`,
         functionName: 'send-tip',
-        functionArgs: [hexArg], // Array of hex strings
+        functionArgs: [hexArg],
         network: CONFIG.NETWORK.DEFAULT
       };
       
