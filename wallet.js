@@ -240,22 +240,34 @@ export class WalletManager {
     }
 
     try {
-      const url = `${CONFIG.FAUCET.ENDPOINT}?address=${this.address}`;
+      // Use the correct faucet endpoint with stacking parameter
+      const url = `${CONFIG.FAUCET.ENDPOINT}?address=${this.address}&stacking=false`;
       console.log('📡 Calling faucet:', url);
 
       const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        }
+        method: 'POST'
       });
 
       if (!response.ok) {
         if (response.status === 429) {
           throw new Error('Faucet rate limit reached. Please try again later.');
         }
-        const errorText = await response.text();
-        throw new Error(`Faucet request failed: ${response.status} - ${errorText}`);
+        
+        // Try to get error details
+        let errorText = '';
+        try {
+          const errorData = await response.json();
+          errorText = errorData.message || JSON.stringify(errorData);
+        } catch {
+          errorText = await response.text();
+        }
+        
+        // Provide helpful error messages
+        if (response.status === 500) {
+          throw new Error('Faucet service temporarily unavailable. Try using the Hiro Explorer faucet directly.');
+        }
+        
+        throw new Error(`Faucet request failed: ${errorText || response.statusText}`);
       }
 
       const data = await response.json();
@@ -264,8 +276,8 @@ export class WalletManager {
       // Update last claim time
       this.lastFaucetClaim = Date.now();
 
-      // Extract transaction info
-      const txId = data.txId || data.txid || data.success?.txId || data.success?.txid;
+      // Extract transaction info - faucet returns { success: true, txId: "...", txRaw: "..." }
+      const txId = data.txId || data.txid;
 
       return {
         success: true,
