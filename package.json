@@ -4,9 +4,15 @@
   "description": "A refactored Stacks tip jar dApp with modular architecture",
   "type": "module",
   "scripts": {
-    "dev": "python3 -m http.server 8000 || python -m http.server 8000",
-    "preview": "vercel dev",
-    "deploy": "vercel --prod"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@stacks/transactions": "^6.13.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
   },
   "keywords": [
     "stacks",
