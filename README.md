@@ -299,8 +299,7 @@ MIT License - see LICENSE file for details
 ## 📞 Support
 
 - GitHub Issues: [Report a bug](https://github.com/CryptoExplor/stacks-tip-jar/issues)
-- Twitter: [@yourusername](https://twitter.com/yourusername)
-- Discord: [Stacks Discord](https://discord.gg/stacks)
+- Twitter: [@kumar14700](https://twitter.com/kumar14700)
 
 ---
 
