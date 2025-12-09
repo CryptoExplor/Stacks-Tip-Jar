@@ -355,24 +355,26 @@ export class UIController {
         : '';
 
       this.showStatus(
-        `Claimed 500 STX! ${shortTxId ? 'TX: ' + shortTxId : ''}`,
+        `✅ Claimed 500 STX! ${shortTxId ? 'TX: ' + shortTxId : ''} Check your wallet in ~30 seconds.`,
         'success',
       );
 
       // Update faucet button state
       this.updateFaucetButton();
 
-      // Refresh stats after a delay
-      setTimeout(
-        () => this.refreshStats(),
-        CONFIG.TX.POLLING_INTERVAL,
-      );
+      // Refresh stats after a delay to allow transaction to be broadcast
+      setTimeout(() => this.refreshStats(), 10000);
     } catch (error) {
       console.error('❌ Faucet claim failed:', error);
-      this.showStatus(
-        error.message || 'Failed to claim from faucet',
-        'error',
-      );
+      
+      // Provide helpful error message with link to manual faucet
+      let errorMsg = error.message || 'Failed to claim from faucet';
+      
+      if (errorMsg.includes('unavailable') || errorMsg.includes('500')) {
+        errorMsg += ' Use the manual faucet: https://explorer.hiro.so/sandbox/faucet?chain=testnet';
+      }
+      
+      this.showStatus(errorMsg, 'error');
     } finally {
       this.setLoading(false);
     }
@@ -416,7 +418,7 @@ export class UIController {
         : 'sent';
 
       this.showStatus(
-        `Tip sent successfully! TX: ${shortTxId}`,
+        `✅ Tip sent! TX: ${shortTxId} - Balance will update shortly`,
         'success',
       );
 
@@ -424,11 +426,13 @@ export class UIController {
         this.elements.amountInput.value = '';
       }
 
-      // Refresh stats after a short delay
-      setTimeout(
-        () => this.refreshStats(),
-        CONFIG.TX.POLLING_INTERVAL,
-      );
+      // Clear cache to force fresh data
+      contractManager.clearCache();
+
+      // Refresh stats multiple times to catch the update
+      setTimeout(() => this.refreshStats(), 3000);  // First check at 3s
+      setTimeout(() => this.refreshStats(), 10000); // Second check at 10s
+      setTimeout(() => this.refreshStats(), 30000); // Final check at 30s
     } catch (error) {
       console.error('❌ Send tip failed:', error);
       if (error.message && error.message.toLowerCase().includes('cancel')) {
