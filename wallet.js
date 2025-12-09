@@ -230,9 +230,11 @@ export class WalletManager {
         BigInt(microAmount)
       );
       
-      // Serialize post-condition to hex
+      // Serialize post-condition to hex (browser-compatible)
       const serializedPC = serializePostCondition(postCondition);
-      const hexPC = '0x' + Buffer.from(serializedPC).toString('hex');
+      const hexPC = '0x' + Array.from(serializedPC)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
       
       console.log('🛡️ Post-condition created and serialized:', hexPC);
       
@@ -297,9 +299,11 @@ export class WalletManager {
         BigInt(microAmount)
       );
       
-      // Serialize post-condition to hex
+      // Serialize post-condition to hex (browser-compatible)
       const serializedPC = serializePostCondition(postCondition);
-      const hexPC = '0x' + Buffer.from(serializedPC).toString('hex');
+      const hexPC = '0x' + Array.from(serializedPC)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
       
       console.log('🛡️ Post-condition created and serialized:', hexPC);
       
