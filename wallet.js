@@ -1,13 +1,5 @@
-// wallet.js - Wallet connection and management (FIXED WITH PROPER POST-CONDITIONS)
+// wallet.js - Wallet connection and management (FIXED - No Buffer, proper error handling)
 import { CONFIG } from './config.js';
-import { 
-  uintCV, 
-  cvToHex,
-  PostConditionMode,
-  makeStandardSTXPostCondition,
-  FungibleConditionCode,
-  serializePostCondition
-} from '@stacks/transactions';
 
 export class WalletManager {
   constructor() {
@@ -61,6 +53,30 @@ export class WalletManager {
                typeof window.HiroWalletProvider !== 'undefined',
       xverse: typeof window.XverseProviders !== 'undefined'
     };
+  }
+
+  // Encode Clarity uint as hex (no Buffer needed)
+  encodeClarityUint(microAmount) {
+    const hex = microAmount.toString(16);
+    const padded = hex.padStart(32, '0');
+    return '0x01' + padded;
+  }
+
+  // Extract txId from response
+  extractTxId(response) {
+    if (!response) return null;
+    
+    // Direct txid/txId
+    if (response.txid || response.txId) {
+      return response.txid || response.txId;
+    }
+    
+    // Nested in result
+    if (response.result && (response.result.txid || response.result.txId)) {
+      return response.result.txid || response.result.txId;
+    }
+    
+    return null;
   }
 
   // Connect Leather wallet
@@ -130,18 +146,21 @@ export class WalletManager {
       const stacksProvider = window.XverseProviders.StacksProvider;
       console.log('📡 Requesting addresses from Xverse...');
       
-      const response = await stacksProvider.request('getAddresses', {
-        purposes: ['stacks'],
+      const response = await stacksProvider.request('stx_getAccounts', {
+        purposes: ['stx'],
         message: 'Connect to ' + CONFIG.APP.NAME
       });
       
       console.log('✅ Xverse response:', response);
 
-      if (!response.result?.addresses?.[0]?.address) {
+      const address = response?.result?.accounts?.[0]?.address || 
+                     response?.result?.addresses?.[0]?.address;
+
+      if (!address) {
         throw new Error('No address returned from Xverse');
       }
 
-      this.address = response.result.addresses[0].address;
+      this.address = address;
       this.walletType = 'xverse';
       console.log('✅ Connected:', this.address);
       this.notify();
@@ -203,7 +222,7 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Leather - FIXED with proper serialized post-conditions
+  // Send tip via Leather - FIXED with no Buffer
   async sendTipLeather(microAmount) {
     console.log('🦊 Sending via Leather...');
     
@@ -214,48 +233,35 @@ export class WalletManager {
     }
 
     try {
-      console.log('📝 Contract:', CONFIG.CONTRACT.ADDRESS, CONFIG.CONTRACT.NAME);
+      const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
+      const argHex = this.encodeClarityUint(microAmount);
+      
+      console.log('📝 Contract:', contractId);
       console.log('🔢 Amount (micro):', microAmount);
-      
-      // Convert to hex-encoded Clarity value
-      const clarityValue = uintCV(microAmount);
-      const hexArg = cvToHex(clarityValue);
-      
-      console.log('🔐 Hex-encoded argument:', hexArg);
-      
-      // Create post-condition: sender must transfer exact amount of STX
-      const postCondition = makeStandardSTXPostCondition(
-        this.address,
-        FungibleConditionCode.Equal,
-        BigInt(microAmount)
-      );
-      
-      // Serialize post-condition to hex (browser-compatible)
-      const serializedPC = serializePostCondition(postCondition);
-      const hexPC = '0x' + Array.from(serializedPC)
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-      
-      console.log('🛡️ Post-condition created and serialized:', hexPC);
+      console.log('🔐 Hex-encoded argument:', argHex);
       
       const params = {
-        contract: `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`,
+        contract: contractId,
         functionName: 'send-tip',
-        functionArgs: [hexArg],
-        postConditions: [hexPC],
-        postConditionMode: PostConditionMode.Deny,
+        functionArgs: [argHex],
         network: CONFIG.NETWORK.DEFAULT
       };
       
       console.log('📤 Calling stx_callContract with params:', params);
       
-      // Call the Leather API
       const response = await provider.request('stx_callContract', params);
       console.log('✅ Transaction response:', response);
       
+      // Check for error in response
+      if (response.error) {
+        const errorMsg = response.error.message || 
+                        response.error.toString() || 
+                        'Transaction failed';
+        throw new Error(errorMsg);
+      }
+      
       // Extract txid from response
-      const result = response.result || response;
-      const txid = result.txid || result.txId;
+      const txid = this.extractTxId(response);
       
       if (!txid) {
         throw new Error('No transaction ID returned from Leather');
@@ -269,11 +275,25 @@ export class WalletManager {
       
     } catch (error) {
       console.error('❌ Leather transaction failed:', error);
-      throw error;
+      
+      // Better error message extraction
+      let errorMessage = 'Transaction failed';
+      
+      if (error.message) {
+        errorMessage = error.message;
+      } else if (error.error && error.error.message) {
+        errorMessage = error.error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error.toString && error.toString() !== '[object Object]') {
+        errorMessage = error.toString();
+      }
+      
+      throw new Error(errorMessage);
     }
   }
 
-  // Send tip via Xverse - FIXED with proper serialized post-conditions
+  // Send tip via Xverse - FIXED with no Buffer
   async sendTipXverse(microAmount) {
     console.log('⚡ Sending via Xverse...');
     
@@ -283,48 +303,35 @@ export class WalletManager {
 
     try {
       const stacksProvider = window.XverseProviders.StacksProvider;
-      console.log('📝 Contract:', CONFIG.CONTRACT.ADDRESS, CONFIG.CONTRACT.NAME);
+      const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
+      const argHex = this.encodeClarityUint(microAmount);
+      
+      console.log('📝 Contract:', contractId);
       console.log('🔢 Amount (micro):', microAmount);
-      
-      // Convert to hex-encoded Clarity value
-      const clarityValue = uintCV(microAmount);
-      const hexArg = cvToHex(clarityValue);
-      
-      console.log('🔐 Hex-encoded argument:', hexArg);
-      
-      // Create post-condition: sender must transfer exact amount of STX
-      const postCondition = makeStandardSTXPostCondition(
-        this.address,
-        FungibleConditionCode.Equal,
-        BigInt(microAmount)
-      );
-      
-      // Serialize post-condition to hex (browser-compatible)
-      const serializedPC = serializePostCondition(postCondition);
-      const hexPC = '0x' + Array.from(serializedPC)
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-      
-      console.log('🛡️ Post-condition created and serialized:', hexPC);
+      console.log('🔐 Hex-encoded argument:', argHex);
       
       const params = {
-        contract: `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`,
+        contract: contractId,
         functionName: 'send-tip',
-        functionArgs: [hexArg],
-        postConditions: [hexPC],
-        postConditionMode: PostConditionMode.Deny,
+        functionArgs: [argHex],
         network: CONFIG.NETWORK.DEFAULT
       };
       
       console.log('📤 Calling stx_callContract with params:', params);
       
-      // Call the Xverse API
       const response = await stacksProvider.request('stx_callContract', params);
       console.log('✅ Transaction response:', response);
       
+      // Check for error in response
+      if (response.error) {
+        const errorMsg = response.error.message || 
+                        response.error.toString() || 
+                        'Transaction failed';
+        throw new Error(errorMsg);
+      }
+      
       // Extract txid from response
-      const result = response.result || response;
-      const txid = result.txid || result.txId;
+      const txid = this.extractTxId(response);
       
       if (!txid) {
         throw new Error('No transaction ID returned from Xverse');
@@ -338,7 +345,21 @@ export class WalletManager {
       
     } catch (error) {
       console.error('❌ Xverse transaction failed:', error);
-      throw error;
+      
+      // Better error message extraction
+      let errorMessage = 'Transaction failed';
+      
+      if (error.message) {
+        errorMessage = error.message;
+      } else if (error.error && error.error.message) {
+        errorMessage = error.error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error.toString && error.toString() !== '[object Object]') {
+        errorMessage = error.toString();
+      }
+      
+      throw new Error(errorMessage);
     }
   }
 }
