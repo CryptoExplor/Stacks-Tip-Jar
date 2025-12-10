@@ -1,4 +1,4 @@
-/* styles.css - Application styles */
+/* styles.css - Application styles with AppKit button */
 
 /* Reset and base styles */
 * {
@@ -17,6 +17,7 @@
   --warning: #f59e0b;
   --info: #3b82f6;
   --faucet: #8b5cf6;
+  --appkit: #3396ff; /* NEW: AppKit brand color */
   
   /* Neutral colors */
   --bg-primary: #ffffff;
@@ -428,6 +429,41 @@ input::placeholder {
 
 .btn-secondary:hover:not(:disabled) {
   background: var(--bg-tertiary);
+}
+
+/* NEW: AppKit Button Style */
+.btn-appkit {
+  background: linear-gradient(135deg, var(--appkit) 0%, #2563eb 100%);
+  color: white;
+  width: 100%;
+  margin-bottom: var(--space-lg);
+  border: none;
+  padding: var(--space-lg);
+  border-radius: var(--radius-md);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  box-shadow: 0 4px 12px rgba(51, 150, 255, 0.3);
+}
+
+.btn-appkit:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(51, 150, 255, 0.5);
+}
+
+.btn-appkit:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-appkit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
 }
 
 .btn:disabled {
