@@ -163,5 +163,10 @@
 
   <!-- Scripts -->
   <script type="module" src="/main.js"></script>
+  <!-- Farcaster SDK (UNCHANGED) -->
+    <script type="module">
+        import { sdk } from '@farcaster/miniapp-sdk';
+        sdk.actions.ready({ disableNativeGestures: true });
+    </script>
 </body>
 </html>
