@@ -9,7 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@stacks/transactions": "^6.13.0"
+    "@stacks/transactions": "^6.13.0",
+    "@farcaster/miniapp-sdk": "latest",
+    "@farcaster/miniapp-wagmi-connector": "latest",
+    "@reown/appkit": "^1.8.14",
+    "@reown/appkit-adapter-wagmi": "^1.8.14",
+    "@wagmi/core": "^2.13.4"
   },
   "devDependencies": {
     "vite": "^5.0.0"
