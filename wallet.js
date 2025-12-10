@@ -1,4 +1,4 @@
-// wallet.js - Wallet connection and management (FIXED VERSION)
+// wallet.js - Wallet connection and management (FIXED v2 - Better Auto-Reconnect)
 import { CONFIG } from './config.js';
 import { uintCV, cvToHex, standardPrincipalCV } from '@stacks/transactions';
 
@@ -9,8 +9,9 @@ export class WalletManager {
     this.listeners = [];
     this.isReady = false;
     this.lastFaucetClaim = null;
+    this.autoReconnected = false;
     
-    // Load saved wallet state on initialization
+    // Load saved wallet state immediately
     this.loadWalletState();
   }
 
@@ -39,10 +40,16 @@ export class WalletManager {
         if (hoursSince < 24) {
           this.address = state.address;
           this.walletType = state.walletType;
+          this.autoReconnected = true;
           console.log('✅ Restored wallet state:', state);
           
-          // Notify listeners after a short delay
-          setTimeout(() => this.notify(), 100);
+          // Notify listeners immediately
+          setTimeout(() => {
+            console.log('🔔 Notifying listeners of auto-reconnect');
+            this.notify();
+          }, 100);
+          
+          return true;
         } else {
           console.log('⚠️ Wallet state expired, clearing...');
           localStorage.removeItem('stacks_wallet_state');
@@ -52,12 +59,18 @@ export class WalletManager {
       console.error('❌ Failed to load wallet state:', error);
       localStorage.removeItem('stacks_wallet_state');
     }
+    return false;
   }
 
   // Clear wallet state from localStorage
   clearWalletState() {
     localStorage.removeItem('stacks_wallet_state');
     console.log('🗑️ Cleared wallet state');
+  }
+
+  // Check if wallet was auto-reconnected
+  wasAutoReconnected() {
+    return this.autoReconnected;
   }
 
   // Wait for wallet providers to load (browser only)
@@ -83,6 +96,17 @@ export class WalletManager {
   // Subscribe to wallet state changes
   subscribe(callback) {
     this.listeners.push(callback);
+    
+    // Immediately call with current state if connected
+    if (this.address) {
+      console.log('🔔 Immediate callback for existing connection');
+      callback({
+        address: this.address,
+        walletType: this.walletType,
+        connected: true,
+      });
+    }
+    
     return () => {
       this.listeners = this.listeners.filter(cb => cb !== callback);
     };
@@ -90,13 +114,21 @@ export class WalletManager {
 
   // Notify all listeners
   notify() {
-    this.listeners.forEach(cb =>
-      cb({
-        address: this.address,
-        walletType: this.walletType,
-        connected: !!this.address,
-      }),
-    );
+    console.log('🔔 Notifying', this.listeners.length, 'listeners');
+    const state = {
+      address: this.address,
+      walletType: this.walletType,
+      connected: !!this.address,
+    };
+    console.log('📤 State being sent:', state);
+    
+    this.listeners.forEach(cb => {
+      try {
+        cb(state);
+      } catch (error) {
+        console.error('❌ Error in listener callback:', error);
+      }
+    });
   }
 
   // Check if wallets are available (SSR safe)
@@ -184,6 +216,7 @@ export class WalletManager {
 
       this.address = finalAddress.address;
       this.walletType = 'leather';
+      this.autoReconnected = false;
       console.log('✅ Connected:', this.address);
       
       // Save wallet state
@@ -234,6 +267,7 @@ export class WalletManager {
 
       this.address = address;
       this.walletType = 'xverse';
+      this.autoReconnected = false;
       console.log('✅ Connected:', this.address);
       
       // Save wallet state
@@ -256,6 +290,7 @@ export class WalletManager {
     console.log('🔌 Disconnecting wallet...');
     this.address = null;
     this.walletType = null;
+    this.autoReconnected = false;
     this.clearWalletState();
     this.notify();
   }
