@@ -1,4 +1,4 @@
-// contract.js - Smart contract interactions (FIXED v3 - Using repr format)
+// contract.js - Smart contract interactions (FIXED v4 - Correct hex parsing)
 
 import { CONFIG, getNetworkEndpoint, microToStx } from './config.js';
 
@@ -103,7 +103,6 @@ export class ContractManager {
     const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
     const [contractAddress, contractName] = contractId.split('.');
 
-    // Add tip parameter to get readable output (u123 instead of 0x...)
     const url = `${endpoint}/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}?tip=latest`;
 
     const body = {
@@ -129,12 +128,102 @@ export class ContractManager {
       }
 
       const data = await response.json();
-      console.log(`✅ ${functionName} full response:`, JSON.stringify(data, null, 2));
+      console.log(`✅ ${functionName} response:`, data);
       return data;
     } catch (error) {
       console.error(`❌ Error calling ${functionName}:`, error);
       throw error;
     }
+  }
+
+  // Decode Clarity hex value
+  // Format: 0x07 (ok response) + 01 (uint type) + 16 bytes (uint128 value)
+  decodeClarityHex(hexString, expectedType) {
+    console.log('🔍 Decoding Clarity hex:', hexString, 'Type:', expectedType);
+    
+    if (!hexString || !hexString.startsWith('0x')) {
+      console.warn('⚠️ Invalid hex string');
+      return null;
+    }
+
+    // Remove 0x prefix
+    let hex = hexString.slice(2);
+    console.log('📦 Hex without prefix:', hex);
+
+    if (expectedType === 'uint') {
+      // Format: 07 (ok) + 01 (uint) + value bytes
+      // Check for 0701 prefix
+      if (hex.startsWith('07') && hex.charAt(2) === '0' && hex.charAt(3) === '1') {
+        // Skip the 0701 prefix (4 chars)
+        hex = hex.slice(4);
+        console.log('🔢 Value bytes:', hex);
+        
+        // The remaining bytes are the uint128 value in big-endian format
+        // Parse as BigInt first to handle large numbers
+        try {
+          const value = BigInt('0x' + hex);
+          const numValue = Number(value);
+          
+          console.log('✅ Decoded uint128:', numValue);
+          return numValue;
+        } catch (e) {
+          console.error('❌ Failed to parse uint:', e);
+          return 0;
+        }
+      }
+      
+      // Fallback: try to parse the whole thing
+      try {
+        const value = parseInt(hex, 16);
+        if (isFinite(value) && !isNaN(value)) {
+          console.log('✅ Fallback parse:', value);
+          return value;
+        }
+      } catch (e) {
+        console.error('❌ Fallback parse failed:', e);
+      }
+      
+      return 0;
+    }
+
+    if (expectedType === 'principal') {
+      // Format: 07 (ok) + 05 (standard principal) or 06 (contract principal) + address bytes
+      if (hex.startsWith('0705') || hex.startsWith('0706')) {
+        const type = hex.startsWith('0705') ? 'standard' : 'contract';
+        console.log('🔑 Principal type:', type);
+        
+        // Skip 0705 or 0706 prefix
+        hex = hex.slice(4);
+        
+        // For standard principal (0705):
+        // Next byte is version (1a for testnet, 16 for mainnet)
+        // Then 20 bytes (40 hex chars) for the hash
+        
+        if (type === 'standard' && hex.length >= 42) {
+          const version = hex.slice(0, 2);
+          const hash = hex.slice(2, 42);
+          
+          console.log('📋 Version:', version, 'Hash:', hash);
+          
+          // Convert to Stacks address format
+          // This is a simplified version - proper implementation would use c32check encoding
+          // For now, we'll return the hex and rely on cached values
+          
+          // If we have a cached owner address, use that
+          if (this.cache.owner && (this.cache.owner.startsWith('ST') || this.cache.owner.startsWith('SP'))) {
+            console.log('✅ Using cached principal:', this.cache.owner);
+            return this.cache.owner;
+          }
+          
+          // Return hex format as fallback
+          return '0x0705' + hex;
+        }
+      }
+      
+      return null;
+    }
+
+    return null;
   }
 
   extractValue(clarityResponse, expectedType = 'uint') {
@@ -143,126 +232,79 @@ export class ContractManager {
       return expectedType === 'uint' ? 0 : null;
     }
 
-    console.log('🔍 Full response structure:', JSON.stringify(clarityResponse, null, 2));
-
-    // Try to find the value in various places
-    let result = null;
+    // Get the result field
+    let result = clarityResponse.result ?? clarityResponse;
     
-    // Check common response structures
-    if (clarityResponse.okay === true && clarityResponse.result) {
-      result = clarityResponse.result;
-      console.log('📦 Found result in okay/result:', result);
-    } else if (clarityResponse.result) {
-      result = clarityResponse.result;
-      console.log('📦 Found result:', result);
-    } else {
-      result = clarityResponse;
-      console.log('📦 Using full response as result:', result);
+    if (result && typeof result === 'object' && result.result) {
+      result = result.result;
     }
 
+    console.log('📦 Extracted result:', result);
+
     if (expectedType === 'uint') {
-      // Handle string values
       if (typeof result === 'string') {
-        console.log('🔤 Result is string:', result);
+        // Handle hex format (0x0701...)
+        if (result.startsWith('0x')) {
+          const decoded = this.decodeClarityHex(result, 'uint');
+          if (decoded !== null && decoded !== 0) {
+            return decoded;
+          }
+          
+          // If decoded is 0, might be legitimately 0, so return it
+          console.log('✅ Decoded value:', decoded);
+          return decoded;
+        }
         
-        // Handle "u123" format (Clarity repr)
+        // Handle "u123" format
         if (result.startsWith('u')) {
           const numStr = result.slice(1);
-          console.log('🔢 Extracting from u-format:', numStr);
           const parsed = parseInt(numStr, 10);
-          
-          if (!isNaN(parsed) && isFinite(parsed)) {
-            console.log('✅ Successfully parsed uint:', parsed);
-            return parsed;
-          }
+          console.log('✅ Parsed u-format:', parsed);
+          return parsed;
         }
         
-        // Handle hex format
-        if (result.startsWith('0x')) {
-          console.log('🔢 Hex format detected, attempting parse');
-          try {
-            // Try simple hex parse first
-            const hex = result.slice(2);
-            const value = parseInt(hex, 16);
-            
-            if (!isNaN(value) && isFinite(value) && value < Number.MAX_SAFE_INTEGER) {
-              console.log('✅ Parsed hex value:', value);
-              return value;
-            }
-          } catch (e) {
-            console.error('❌ Hex parse failed:', e);
-          }
-        }
-        
-        // Try direct number parse
-        const directParse = parseInt(result, 10);
-        if (!isNaN(directParse) && isFinite(directParse)) {
-          console.log('✅ Direct string parse:', directParse);
-          return directParse;
+        // Try direct parse
+        const num = parseInt(result, 10);
+        if (isFinite(num) && !isNaN(num)) {
+          console.log('✅ Direct parse:', num);
+          return num;
         }
       }
       
-      // Handle number values
-      if (typeof result === 'number') {
-        console.log('🔢 Result is number:', result);
-        if (isFinite(result) && !isNaN(result)) {
-          console.log('✅ Using number directly:', result);
-          return result;
-        }
-      }
-      
-      // Handle object with value field
-      if (result && typeof result === 'object') {
-        console.log('📦 Result is object, checking fields');
-        
-        if (result.value !== undefined) {
-          console.log('Found value field:', result.value);
-          // Recursively extract from value field
-          return this.extractValue({ result: result.value }, expectedType);
-        }
-        
-        if (result.data !== undefined) {
-          console.log('Found data field:', result.data);
-          return this.extractValue({ result: result.data }, expectedType);
-        }
+      if (typeof result === 'number' && isFinite(result)) {
+        console.log('✅ Number value:', result);
+        return result;
       }
 
-      console.warn('⚠️ Could not parse uint from:', result);
+      console.warn('⚠️ Could not extract uint, returning 0');
       return 0;
     }
 
     if (expectedType === 'principal') {
       if (typeof result === 'string') {
-        // Remove leading quote if present
+        // Handle hex format
+        if (result.startsWith('0x')) {
+          const decoded = this.decodeClarityHex(result, 'principal');
+          if (decoded) {
+            return decoded;
+          }
+        }
+        
+        // Handle string format
         let principal = result;
         if (principal.startsWith("'")) {
           principal = principal.slice(1);
         }
         
-        // Check if it looks like a valid Stacks address
         if (principal.startsWith('ST') || principal.startsWith('SP')) {
-          console.log('✅ Extracted principal:', principal);
+          console.log('✅ String principal:', principal);
           return principal;
-        }
-        
-        // Handle hex format - try to use cached value
-        if (principal.startsWith('0x')) {
-          console.log('⚠️ Principal in hex format');
-          if (this.cache.owner && (this.cache.owner.startsWith('ST') || this.cache.owner.startsWith('SP'))) {
-            console.log('✅ Using cached principal:', this.cache.owner);
-            return this.cache.owner;
-          }
         }
         
         return principal;
       }
-      
-      if (result && typeof result === 'object' && result.value) {
-        return this.extractValue({ result: result.value }, expectedType);
-      }
     }
 
-    console.log('✅ Returning result as-is:', result);
     return result;
   }
 
