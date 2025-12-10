@@ -1,4 +1,4 @@
-// contract.js - Smart contract interactions
+// contract.js - Smart contract interactions (FIXED VERSION)
 
 import { CONFIG, getNetworkEndpoint, microToStx } from './config.js';
 
@@ -10,17 +10,16 @@ export class ContractManager {
       owner: null,
       lastUpdate: null,
     };
-    this.cacheTimeout = 10000; // 10 seconds
+    this.cacheTimeout = 5000; // Reduced to 5 seconds for more frequent updates
   }
 
-  // Check if cache is valid
   isCacheValid() {
     if (!this.cache.lastUpdate) return false;
     return Date.now() - this.cache.lastUpdate < this.cacheTimeout;
   }
 
-  // Clear cache
   clearCache() {
+    console.log('🗑️ Clearing contract cache');
     this.cache = {
       balance: null,
       totalTips: null,
@@ -29,22 +28,29 @@ export class ContractManager {
     };
   }
 
-  // Fetch contract data via Hiro API
   async fetchContractData(network = CONFIG.NETWORK.DEFAULT) {
     if (this.isCacheValid()) {
+      console.log('💾 Using cached contract data');
       return this.cache;
     }
 
     const endpoint = getNetworkEndpoint(network);
     const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
 
+    console.log('🔍 Fetching fresh contract data from:', endpoint);
+    console.log('📝 Contract ID:', contractId);
+
     try {
-      // Fetch all data in parallel (output_type=repr for easy parsing)
       const [balanceData, tipsData, ownerData] = await Promise.allSettled([
         this.callReadOnly('get-contract-balance', [], network),
         this.callReadOnly('get-total-tips', [], network),
         this.callReadOnly('get-owner', [], network),
       ]);
+
+      console.log('📊 Raw API responses:');
+      console.log('  Balance:', balanceData);
+      console.log('  Tips:', tipsData);
+      console.log('  Owner:', ownerData);
 
       const balance =
         balanceData.status === 'fulfilled'
@@ -61,26 +67,33 @@ export class ContractManager {
           ? this.extractValue(ownerData.value, 'principal')
           : null;
 
-      console.log('📊 Raw contract data:', { balance, totalTips, owner });
+      console.log('🔢 Extracted micro-STX values:');
+      console.log('  Balance (micro):', balance);
+      console.log('  Total tips (micro):', totalTips);
+      console.log('  Owner:', owner);
 
-      // Update cache (convert to STX for display)
+      // Convert to STX for display
+      const balanceSTX = microToStx(balance);
+      const totalTipsSTX = microToStx(totalTips);
+
+      console.log('💰 Converted STX values:');
+      console.log('  Balance:', balanceSTX, 'STX');
+      console.log('  Total tips:', totalTipsSTX, 'STX');
+
       this.cache = {
-        balance: microToStx(balance),
-        totalTips: microToStx(totalTips),
+        balance: balanceSTX,
+        totalTips: totalTipsSTX,
         owner,
         lastUpdate: Date.now(),
       };
 
-      console.log('💾 Cached STX values:', this.cache);
-
       return this.cache;
     } catch (error) {
-      console.error('Failed to fetch contract data:', error);
+      console.error('❌ Failed to fetch contract data:', error);
       throw error;
     }
   }
 
-  // Call read-only contract function via Hiro API
   async callReadOnly(
     functionName,
     functionArgs = [],
@@ -90,13 +103,14 @@ export class ContractManager {
     const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
     const [contractAddress, contractName] = contractId.split('.');
 
-    // Use output_type=repr so result is like "u123" or "'ST3...."
-    const url = `${endpoint}/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}?output_type=repr`;
+    const url = `${endpoint}/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`;
 
     const body = {
       sender: contractAddress,
-      arguments: functionArgs, // hex-encoded args if needed; ours are []
+      arguments: functionArgs,
     };
+
+    console.log(`📡 Calling ${functionName} at ${url}`);
 
     try {
       const response = await fetch(url, {
@@ -107,98 +121,111 @@ export class ContractManager {
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.error(`❌ API error for ${functionName}:`, errorText);
         throw new Error(
           `Contract call failed: ${response.status} - ${errorText}`,
         );
       }
 
       const data = await response.json();
+      console.log(`✅ ${functionName} response:`, data);
       return data;
     } catch (error) {
-      console.error(`Error calling ${functionName}:`, error);
+      console.error(`❌ Error calling ${functionName}:`, error);
       throw error;
     }
   }
 
-  // Extract value from Hiro call-read response with better number parsing
   extractValue(clarityResponse, expectedType = 'uint') {
-    if (!clarityResponse) return null;
+    if (!clarityResponse) {
+      console.warn('⚠️ Empty response received');
+      return expectedType === 'uint' ? 0 : null;
+    }
 
-    // Hiro format: { okay: true, result: "u123" } or { okay: true, result: "'ST3..."}
-    const result = clarityResponse.result ?? clarityResponse;
+    console.log('🔍 Extracting value from:', clarityResponse, 'Type:', expectedType);
 
-    if (typeof result === 'string') {
-      const repr = result.trim();
+    // Handle the nested structure: { okay: true, result: "0x..." }
+    let result = clarityResponse.result ?? clarityResponse;
 
-      if (expectedType === 'uint') {
-        // "u123" format
-        if (repr.startsWith('u')) {
-          const numStr = repr.slice(1);
-          
-          // For very large numbers, keep as string temporarily
-          if (numStr.length > 15) {
-            console.warn('Large number detected, may lose precision:', numStr);
-          }
-          
+    // If result is still an object with a result field, unwrap it
+    if (result && typeof result === 'object' && result.result) {
+      result = result.result;
+    }
+
+    console.log('📦 Unwrapped result:', result);
+
+    if (expectedType === 'uint') {
+      // Try to extract uint from hex format (0x...)
+      if (typeof result === 'string') {
+        if (result.startsWith('0x')) {
+          // Parse hex string
           try {
-            // Parse directly as number for values that fit safely
-            const parsed = Number(numStr);
+            // Remove 0x prefix and get the hex value
+            const hexStr = result.slice(2);
+            console.log('🔢 Parsing hex string:', hexStr);
             
-            // Check if parsing was safe (no precision loss)
-            if (Number.isSafeInteger(parsed) || parsed < Number.MAX_SAFE_INTEGER) {
-              return parsed;
+            // The first byte is the type prefix (01 for uint)
+            // The actual value starts after that
+            if (hexStr.startsWith('01')) {
+              const valueHex = hexStr.slice(2);
+              const value = parseInt(valueHex, 16);
+              console.log('✅ Parsed uint value:', value);
+              return value;
             }
-            
-            // For very large numbers, still return as number but log warning
-            console.warn('Number exceeds safe integer range, may have precision loss');
-            return parsed;
           } catch (e) {
-            console.error('Failed to parse uint:', numStr, e);
-            return 0;
+            console.error('❌ Failed to parse hex uint:', e);
           }
-        }
-        
-        // Fallback: try direct parse
-        const parsed = parseInt(repr, 10);
-        if (Number.isFinite(parsed) && !Number.isNaN(parsed)) {
+        } else if (result.startsWith('u')) {
+          // Handle "u123" format
+          const numStr = result.slice(1);
+          const parsed = parseInt(numStr, 10);
+          console.log('✅ Parsed "u" format value:', parsed);
           return parsed;
         }
+      }
+
+      // Try direct number conversion
+      const num = Number(result);
+      if (Number.isFinite(num) && !Number.isNaN(num)) {
+        console.log('✅ Direct conversion:', num);
+        return num;
+      }
+
+      console.warn('⚠️ Could not parse uint, returning 0');
+      return 0;
+    }
+
+    if (expectedType === 'principal') {
+      if (typeof result === 'string') {
+        // Handle hex format for principals
+        if (result.startsWith('0x')) {
+          try {
+            // Principals in hex start with 05 or 06 (standard/contract)
+            const hexStr = result.slice(2);
+            if (hexStr.startsWith('05') || hexStr.startsWith('06')) {
+              // For now, return the hex - in production you'd decode it properly
+              console.log('⚠️ Principal in hex format, may need decoding');
+              return result;
+            }
+          } catch (e) {
+            console.error('❌ Failed to parse hex principal:', e);
+          }
+        }
         
-        console.warn('Could not parse uint from:', repr);
-        return 0;
-      }
-
-      if (expectedType === 'principal') {
-        // "'ST3ZQ...": strip leading single quote
-        if (repr.startsWith("'")) {
-          return repr.slice(1);
+        // Remove leading quote if present
+        if (result.startsWith("'")) {
+          result = result.slice(1);
         }
-        return repr;
-      }
-
-      return repr;
-    }
-
-    // Fallback for weird shapes: look for nested repr
-    if (result && typeof result === 'object') {
-      if (typeof result.repr === 'string') {
-        return this.extractValue({ result: result.repr }, expectedType);
-      }
-      // Check for direct value field
-      if (typeof result.value !== 'undefined') {
-        if (expectedType === 'uint') {
-          const val = Number(result.value);
-          return Number.isFinite(val) ? val : 0;
-        }
-        return result.value;
+        
+        console.log('✅ Extracted principal:', result);
+        return result;
       }
     }
 
-    console.warn('Unexpected result format:', result);
-    return expectedType === 'uint' ? 0 : result;
+    console.log('✅ Returning raw result:', result);
+    return result;
   }
 
-  // Get contract balance
   async getBalance(network = CONFIG.NETWORK.DEFAULT, forceRefresh = false) {
     if (forceRefresh) {
       this.clearCache();
@@ -207,7 +234,6 @@ export class ContractManager {
     return data.balance;
   }
 
-  // Get total tips
   async getTotalTips(network = CONFIG.NETWORK.DEFAULT, forceRefresh = false) {
     if (forceRefresh) {
       this.clearCache();
@@ -216,7 +242,6 @@ export class ContractManager {
     return data.totalTips;
   }
 
-  // Get contract owner
   async getOwner(network = CONFIG.NETWORK.DEFAULT, forceRefresh = false) {
     if (forceRefresh) {
       this.clearCache();
@@ -225,7 +250,6 @@ export class ContractManager {
     return data.owner;
   }
 
-  // Get all contract stats
   async getStats(network = CONFIG.NETWORK.DEFAULT, forceRefresh = false) {
     if (forceRefresh) {
       this.clearCache();
@@ -233,7 +257,6 @@ export class ContractManager {
     return await this.fetchContractData(network);
   }
 
-  // Verify transaction status
   async verifyTransaction(txId, network = CONFIG.NETWORK.DEFAULT) {
     const endpoint = getNetworkEndpoint(network);
     const url = `${endpoint}/extended/v1/tx/${txId}`;
@@ -257,5 +280,4 @@ export class ContractManager {
   }
 }
 
-// Export singleton instance
 export const contractManager = new ContractManager();
