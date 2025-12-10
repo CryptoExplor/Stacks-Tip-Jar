@@ -1,4 +1,4 @@
-// contract.js - Smart contract interactions (FIXED VERSION)
+// contract.js - Smart contract interactions (FIXED v2 - Scientific Notation Fix)
 
 import { CONFIG, getNetworkEndpoint, microToStx } from './config.js';
 
@@ -10,7 +10,7 @@ export class ContractManager {
       owner: null,
       lastUpdate: null,
     };
-    this.cacheTimeout = 5000; // Reduced to 5 seconds for more frequent updates
+    this.cacheTimeout = 5000;
   }
 
   isCacheValid() {
@@ -136,6 +136,65 @@ export class ContractManager {
     }
   }
 
+  // Decode Clarity hex-encoded uint value
+  decodeClarityUint(hexStr) {
+    console.log('🔍 Decoding Clarity uint from hex:', hexStr);
+    
+    // Remove 0x prefix if present
+    if (hexStr.startsWith('0x')) {
+      hexStr = hexStr.slice(2);
+    }
+
+    // Clarity uint format: 01 (type) + length prefix + value bytes
+    if (!hexStr.startsWith('01')) {
+      console.warn('⚠️ Not a Clarity uint (missing 01 prefix)');
+      return 0;
+    }
+
+    // Skip the 01 type byte
+    hexStr = hexStr.slice(2);
+
+    // For uint128, the format is more complex. Let's try a simpler approach:
+    // Find the actual value bytes (usually the last 16 bytes for uint128)
+    
+    // If the hex string is very long, it likely has length encoding
+    // Try to extract just the numeric value
+    
+    // Method 1: Try to parse the last bytes as the value
+    // uint128 is 16 bytes = 32 hex chars
+    if (hexStr.length > 32) {
+      // Skip length encoding and get last 32 chars
+      const valuePart = hexStr.slice(-32);
+      console.log('🔢 Extracted value part (last 32 chars):', valuePart);
+      
+      try {
+        // Parse as BigInt to handle large numbers
+        const value = BigInt('0x' + valuePart);
+        console.log('✅ Decoded uint (BigInt):', value.toString());
+        
+        // Convert to regular number (might lose precision for very large values)
+        const numValue = Number(value);
+        console.log('✅ Decoded uint (Number):', numValue);
+        return numValue;
+      } catch (e) {
+        console.error('❌ Failed to parse value part:', e);
+      }
+    }
+
+    // Method 2: Try direct hex to decimal conversion
+    try {
+      const value = BigInt('0x' + hexStr);
+      const numValue = Number(value);
+      console.log('✅ Direct conversion result:', numValue);
+      return numValue;
+    } catch (e) {
+      console.error('❌ Direct conversion failed:', e);
+    }
+
+    console.warn('⚠️ All parsing methods failed, returning 0');
+    return 0;
+  }
+
   extractValue(clarityResponse, expectedType = 'uint') {
     if (!clarityResponse) {
       console.warn('⚠️ Empty response received');
@@ -155,28 +214,15 @@ export class ContractManager {
     console.log('📦 Unwrapped result:', result);
 
     if (expectedType === 'uint') {
-      // Try to extract uint from hex format (0x...)
       if (typeof result === 'string') {
+        // Handle hex format (0x...)
         if (result.startsWith('0x')) {
-          // Parse hex string
-          try {
-            // Remove 0x prefix and get the hex value
-            const hexStr = result.slice(2);
-            console.log('🔢 Parsing hex string:', hexStr);
-            
-            // The first byte is the type prefix (01 for uint)
-            // The actual value starts after that
-            if (hexStr.startsWith('01')) {
-              const valueHex = hexStr.slice(2);
-              const value = parseInt(valueHex, 16);
-              console.log('✅ Parsed uint value:', value);
-              return value;
-            }
-          } catch (e) {
-            console.error('❌ Failed to parse hex uint:', e);
-          }
-        } else if (result.startsWith('u')) {
-          // Handle "u123" format
+          const decoded = this.decodeClarityUint(result);
+          console.log('✅ Final decoded value:', decoded);
+          return decoded;
+        } 
+        // Handle "u123" format
+        else if (result.startsWith('u')) {
           const numStr = result.slice(1);
           const parsed = parseInt(numStr, 10);
           console.log('✅ Parsed "u" format value:', parsed);
@@ -186,12 +232,12 @@ export class ContractManager {
 
       // Try direct number conversion
       const num = Number(result);
-      if (Number.isFinite(num) && !Number.isNaN(num)) {
-        console.log('✅ Direct conversion:', num);
+      if (Number.isFinite(num) && !Number.isNaN(num) && num < Number.MAX_SAFE_INTEGER) {
+        console.log('✅ Direct conversion (safe):', num);
         return num;
       }
 
-      console.warn('⚠️ Could not parse uint, returning 0');
+      console.warn('⚠️ Could not parse uint safely, returning 0');
       return 0;
     }
 
@@ -200,12 +246,18 @@ export class ContractManager {
         // Handle hex format for principals
         if (result.startsWith('0x')) {
           try {
-            // Principals in hex start with 05 or 06 (standard/contract)
+            // Principals in hex: 05 (standard) or 06 (contract) + 20 bytes hash
             const hexStr = result.slice(2);
+            
             if (hexStr.startsWith('05') || hexStr.startsWith('06')) {
-              // For now, return the hex - in production you'd decode it properly
-              console.log('⚠️ Principal in hex format, may need decoding');
-              return result;
+              // Skip type byte and version byte, then decode the hash
+              // This is complex - for now just return what we have
+              console.log('⚠️ Principal in hex format - using cached value');
+              
+              // If we have it cached from a previous call, use that
+              if (this.cache.owner && this.cache.owner.startsWith('ST')) {
+                return this.cache.owner;
+              }
             }
           } catch (e) {
             console.error('❌ Failed to parse hex principal:', e);
