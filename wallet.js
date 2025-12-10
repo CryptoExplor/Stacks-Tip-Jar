@@ -1,4 +1,4 @@
-// wallet.js - Wallet connection and management (with Withdraw + Faucet support)
+// wallet.js - Wallet connection and management (FIXED VERSION)
 import { CONFIG } from './config.js';
 import { uintCV, cvToHex, standardPrincipalCV } from '@stacks/transactions';
 
@@ -9,6 +9,55 @@ export class WalletManager {
     this.listeners = [];
     this.isReady = false;
     this.lastFaucetClaim = null;
+    
+    // Load saved wallet state on initialization
+    this.loadWalletState();
+  }
+
+  // Save wallet state to localStorage
+  saveWalletState() {
+    if (this.address && this.walletType) {
+      const state = {
+        address: this.address,
+        walletType: this.walletType,
+        timestamp: Date.now()
+      };
+      localStorage.setItem('stacks_wallet_state', JSON.stringify(state));
+      console.log('💾 Saved wallet state:', state);
+    }
+  }
+
+  // Load wallet state from localStorage
+  loadWalletState() {
+    try {
+      const saved = localStorage.getItem('stacks_wallet_state');
+      if (saved) {
+        const state = JSON.parse(saved);
+        
+        // Check if state is less than 24 hours old
+        const hoursSince = (Date.now() - state.timestamp) / (1000 * 60 * 60);
+        if (hoursSince < 24) {
+          this.address = state.address;
+          this.walletType = state.walletType;
+          console.log('✅ Restored wallet state:', state);
+          
+          // Notify listeners after a short delay
+          setTimeout(() => this.notify(), 100);
+        } else {
+          console.log('⚠️ Wallet state expired, clearing...');
+          localStorage.removeItem('stacks_wallet_state');
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to load wallet state:', error);
+      localStorage.removeItem('stacks_wallet_state');
+    }
+  }
+
+  // Clear wallet state from localStorage
+  clearWalletState() {
+    localStorage.removeItem('stacks_wallet_state');
+    console.log('🗑️ Cleared wallet state');
   }
 
   // Wait for wallet providers to load (browser only)
@@ -80,12 +129,10 @@ export class WalletManager {
   extractTxId(response) {
     if (!response) return null;
 
-    // Direct txid/txId
     if (response.txid || response.txId) {
       return response.txid || response.txId;
     }
 
-    // Nested in result
     if (response.result && (response.result.txid || response.result.txId)) {
       return response.result.txid || response.result.txId;
     }
@@ -119,7 +166,6 @@ export class WalletManager {
       const addresses = response.result.addresses;
       const network = CONFIG.NETWORK.DEFAULT;
 
-      // Find matching Stacks address for network
       const stacksAddress = addresses.find(addr => {
         if (addr.symbol !== 'STX') return false;
         if (network === 'testnet') {
@@ -139,6 +185,9 @@ export class WalletManager {
       this.address = finalAddress.address;
       this.walletType = 'leather';
       console.log('✅ Connected:', this.address);
+      
+      // Save wallet state
+      this.saveWalletState();
       this.notify();
 
       return {
@@ -186,6 +235,9 @@ export class WalletManager {
       this.address = address;
       this.walletType = 'xverse';
       console.log('✅ Connected:', this.address);
+      
+      // Save wallet state
+      this.saveWalletState();
       this.notify();
 
       return {
@@ -204,6 +256,7 @@ export class WalletManager {
     console.log('🔌 Disconnecting wallet...');
     this.address = null;
     this.walletType = null;
+    this.clearWalletState();
     this.notify();
   }
 
@@ -216,9 +269,6 @@ export class WalletManager {
     };
   }
 
-  // ──────────────────────────────────────────────────────────────
-  // Claim testnet STX from faucet
-  // ──────────────────────────────────────────────────────────────
   async claimFaucet() {
     console.log('💰 Attempting to claim from faucet...');
 
@@ -230,7 +280,6 @@ export class WalletManager {
       throw new Error('Faucet is only available on testnet');
     }
 
-    // Check cooldown
     if (this.lastFaucetClaim) {
       const timeSince = Date.now() - this.lastFaucetClaim;
       if (timeSince < CONFIG.FAUCET.COOLDOWN) {
@@ -240,7 +289,6 @@ export class WalletManager {
     }
 
     try {
-      // Use the correct faucet endpoint with stacking parameter
       const url = `${CONFIG.FAUCET.ENDPOINT}?address=${this.address}&stacking=false`;
       console.log('📡 Calling faucet:', url);
 
@@ -253,7 +301,6 @@ export class WalletManager {
           throw new Error('Faucet rate limit reached. Please try again later.');
         }
         
-        // Try to get error details
         let errorText = '';
         try {
           const errorData = await response.json();
@@ -262,7 +309,6 @@ export class WalletManager {
           errorText = await response.text();
         }
         
-        // Provide helpful error messages
         if (response.status === 500) {
           throw new Error('Faucet service temporarily unavailable. Try using the Hiro Explorer faucet directly.');
         }
@@ -273,10 +319,8 @@ export class WalletManager {
       const data = await response.json();
       console.log('✅ Faucet response:', data);
 
-      // Update last claim time
       this.lastFaucetClaim = Date.now();
 
-      // Extract transaction info - faucet returns { success: true, txId: "...", txRaw: "..." }
       const txId = data.txId || data.txid;
 
       return {
@@ -290,7 +334,6 @@ export class WalletManager {
     }
   }
 
-  // Check if faucet can be claimed
   canClaimFaucet() {
     if (!this.address || CONFIG.NETWORK.DEFAULT !== 'testnet') {
       return { canClaim: false, reason: 'Not connected or not on testnet' };
@@ -311,9 +354,6 @@ export class WalletManager {
     return { canClaim: true };
   }
 
-  // ──────────────────────────────────────────────────────────────
-  // Send tip transaction
-  // ──────────────────────────────────────────────────────────────
   async sendTip(amount) {
     console.log('💸 Attempting to send tip:', amount, 'STX');
 
@@ -342,7 +382,6 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Leather
   async sendTipLeather(microAmount) {
     console.log('🦊 Sending via Leather...');
 
@@ -415,7 +454,6 @@ export class WalletManager {
     }
   }
 
-  // Send tip via Xverse
   async sendTipXverse(microAmount) {
     console.log('⚡ Sending via Xverse...');
 
@@ -487,9 +525,6 @@ export class WalletManager {
     }
   }
 
-  // ──────────────────────────────────────────────────────────────
-  // Withdraw all tips (owner-only)
-  // ──────────────────────────────────────────────────────────────
   async withdraw() {
     console.log('⬇️ Attempting withdrawal...');
 
@@ -659,5 +694,4 @@ export class WalletManager {
   }
 }
 
-// Export singleton instance
 export const walletManager = new WalletManager();
