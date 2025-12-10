@@ -1,4 +1,4 @@
-// ui.js - UI controller with wallet detection + owner withdraw + faucet
+// ui.js - UI controller with AppKit wallet button
 import { CONFIG, formatStx, isFaucetAvailable } from './config.js';
 import { walletManager } from './wallet.js';
 import { contractManager } from './contract.js';
@@ -14,25 +14,21 @@ export class UIController {
     this.faucetTimer = null;
   }
 
-  // Initialize UI
   async init() {
     console.log('🚀 Initializing UI...');
     this.cacheElements();
     this.attachEventListeners();
     this.subscribeToWallet();
 
-    // Wait for wallets to be ready
     await this.waitForWallets();
     this.checkWalletAvailability();
     await this.loadInitialData();
     
-    // Show/hide faucet based on network
     this.updateFaucetVisibility();
     
     console.log('✅ UI initialized');
   }
 
-  // Wait for wallet manager to be ready
   async waitForWallets() {
     let attempts = 0;
     while (!walletManager.isReady && attempts < 50) {
@@ -41,12 +37,12 @@ export class UIController {
     }
   }
 
-  // Cache DOM elements
   cacheElements() {
     this.elements = {
       // Wallet connection
       leatherBtn: document.getElementById('leatherBtn'),
       xverseBtn: document.getElementById('xverseBtn'),
+      appkitBtn: document.getElementById('appkitBtn'), // NEW
       disconnectBtn: document.getElementById('disconnectBtn'),
       connectSection: document.getElementById('connectSection'),
       tipSection: document.getElementById('tipSection'),
@@ -78,34 +74,22 @@ export class UIController {
     };
   }
 
-  // Attach event listeners
   attachEventListeners() {
     // Wallet connection buttons
-    this.elements.leatherBtn?.addEventListener('click', () =>
-      this.connectLeather(),
-    );
-    this.elements.xverseBtn?.addEventListener('click', () =>
-      this.connectXverse(),
-    );
-    this.elements.disconnectBtn?.addEventListener('click', () =>
-      this.disconnect(),
-    );
+    this.elements.leatherBtn?.addEventListener('click', () => this.connectLeather());
+    this.elements.xverseBtn?.addEventListener('click', () => this.connectXverse());
+    this.elements.appkitBtn?.addEventListener('click', () => this.connectAppKit()); // NEW
+    this.elements.disconnectBtn?.addEventListener('click', () => this.disconnect());
 
     // Tip sending
     this.elements.sendTipBtn?.addEventListener('click', () => this.sendTip());
-    this.elements.refreshBtn?.addEventListener('click', () =>
-      this.refreshStats(),
-    );
+    this.elements.refreshBtn?.addEventListener('click', () => this.refreshStats());
 
     // Withdraw
-    this.elements.withdrawBtn?.addEventListener('click', () =>
-      this.withdraw(),
-    );
+    this.elements.withdrawBtn?.addEventListener('click', () => this.withdraw());
 
     // Faucet
-    this.elements.faucetBtn?.addEventListener('click', () =>
-      this.claimFaucet(),
-    );
+    this.elements.faucetBtn?.addEventListener('click', () => this.claimFaucet());
 
     // Quick amount buttons
     this.elements.quickAmounts.forEach(btn => {
@@ -125,7 +109,6 @@ export class UIController {
     });
   }
 
-  // Subscribe to wallet state changes
   subscribeToWallet() {
     walletManager.subscribe(walletState => {
       console.log('👛 Wallet state changed:', walletState);
@@ -135,13 +118,12 @@ export class UIController {
     });
   }
 
-  // Check wallet availability
   checkWalletAvailability() {
     console.log('🔍 Checking wallet availability...');
     const availability = walletManager.checkAvailability();
     console.log('📋 Availability:', availability);
 
-    if (!availability.leather && !availability.xverse) {
+    if (!availability.leather && !availability.xverse && !availability.appkit) {
       this.elements.installNotice?.classList.add('show');
       console.log('⚠️ No wallets detected - showing install notice');
     }
@@ -150,26 +132,29 @@ export class UIController {
     if (!availability.leather && this.elements.leatherBtn) {
       this.elements.leatherBtn.disabled = true;
       this.elements.leatherBtn.title = 'Leather wallet not installed';
-      console.log('❌ Leather not available');
-    } else {
-      console.log('✅ Leather available');
     }
 
     if (!availability.xverse && this.elements.xverseBtn) {
       this.elements.xverseBtn.disabled = true;
       this.elements.xverseBtn.title = 'Xverse wallet not installed';
-      console.log('❌ Xverse not available');
-    } else {
-      console.log('✅ Xverse available');
+    }
+
+    // AppKit should always be available after initialization
+    if (!availability.appkit && this.elements.appkitBtn) {
+      this.elements.appkitBtn.disabled = true;
+      this.elements.appkitBtn.title = 'AppKit initializing...';
+      // Re-check in 2 seconds
+      setTimeout(() => this.checkWalletAvailability(), 2000);
+    } else if (this.elements.appkitBtn) {
+      this.elements.appkitBtn.disabled = false;
+      this.elements.appkitBtn.title = 'Connect via Reown AppKit';
     }
   }
 
-  // Load initial data
   async loadInitialData() {
     console.log('📊 Loading initial data...');
     await this.refreshStats();
 
-    // Update network display
     if (this.elements.networkDisplay) {
       const network = CONFIG.NETWORK.DEFAULT;
       this.elements.networkDisplay.textContent =
@@ -177,7 +162,6 @@ export class UIController {
     }
   }
 
-  // Update faucet visibility based on network
   updateFaucetVisibility() {
     if (this.elements.faucetSection) {
       if (isFaucetAvailable()) {
@@ -188,7 +172,6 @@ export class UIController {
     }
   }
 
-  // Update faucet button state
   updateFaucetButton() {
     if (!this.elements.faucetBtn) return;
 
@@ -198,13 +181,11 @@ export class UIController {
       this.elements.faucetBtn.disabled = false;
       this.elements.faucetBtn.innerHTML = '<span class="btn-icon">💰</span><span>Claim 500 STX from Faucet</span>';
       
-      // Clear any existing timer
       if (this.faucetTimer) {
         clearInterval(this.faucetTimer);
         this.faucetTimer = null;
       }
     } else if (faucetStatus.remainingSeconds) {
-      // Start countdown timer
       this.elements.faucetBtn.disabled = true;
       this.startFaucetCountdown(faucetStatus.remainingSeconds);
     } else {
@@ -213,7 +194,6 @@ export class UIController {
     }
   }
 
-  // Start faucet countdown
   startFaucetCountdown(seconds) {
     if (this.faucetTimer) {
       clearInterval(this.faucetTimer);
@@ -244,7 +224,6 @@ export class UIController {
     this.faucetTimer = setInterval(updateButton, 1000);
   }
 
-  // Connect Leather wallet
   async connectLeather() {
     console.log('🦊 Connect Leather clicked');
     this.setLoading(true);
@@ -264,7 +243,6 @@ export class UIController {
     }
   }
 
-  // Connect Xverse wallet
   async connectXverse() {
     console.log('⚡ Connect Xverse clicked');
     this.setLoading(true);
@@ -284,20 +262,43 @@ export class UIController {
     }
   }
 
-  // Disconnect wallet
+  // NEW: Connect via Reown AppKit
+  async connectAppKit() {
+    console.log('🌐 Connect AppKit clicked');
+    this.setLoading(true);
+    this.showStatus('Opening wallet selection...', 'info');
+
+    try {
+      await walletManager.connectAppKit();
+      this.showStatus(`Connected with AppKit!`, 'success');
+    } catch (error) {
+      console.error('❌ AppKit connection failed:', error);
+      
+      // Don't show error if user just closed the modal
+      if (error.message && !error.message.includes('timeout')) {
+        this.showStatus(
+          error.message || 'Failed to connect wallet',
+          'error',
+        );
+      } else {
+        this.showStatus('Connection cancelled', 'info');
+      }
+    } finally {
+      this.setLoading(false);
+    }
+  }
+
   disconnect() {
     console.log('🔌 Disconnect clicked');
     walletManager.disconnect();
     this.showStatus('Wallet disconnected', 'info');
     
-    // Clear faucet timer
     if (this.faucetTimer) {
       clearInterval(this.faucetTimer);
       this.faucetTimer = null;
     }
   }
 
-  // Update wallet UI
   updateWalletUI(walletState) {
     const isOwner = walletState.address === CONFIG.CONTRACT.OWNER;
 
@@ -308,16 +309,16 @@ export class UIController {
         this.elements.walletAddress.textContent = walletState.address;
       }
       if (this.elements.walletBadge) {
+        const badge = walletState.walletType.charAt(0).toUpperCase() + walletState.walletType.slice(1);
         this.elements.walletBadge.textContent = isOwner
-          ? `${walletState.walletType} • Owner`
-          : walletState.walletType;
+          ? `${badge} • Owner`
+          : badge;
       }
 
       this.elements.walletInfo?.classList.add('show');
       this.elements.connectSection?.classList.remove('show');
       this.elements.tipSection?.classList.add('show');
 
-      // Owner-only withdraw button
       if (this.elements.withdrawBtn) {
         this.elements.withdrawBtn.style.display = isOwner ? 'block' : 'none';
       }
@@ -334,7 +335,6 @@ export class UIController {
     }
   }
 
-  // Claim faucet
   async claimFaucet() {
     console.log('💰 Claim faucet clicked');
 
@@ -359,15 +359,11 @@ export class UIController {
         'success',
       );
 
-      // Update faucet button state
       this.updateFaucetButton();
-
-      // Refresh stats after a delay to allow transaction to be broadcast
       setTimeout(() => this.refreshStats(), 10000);
     } catch (error) {
       console.error('❌ Faucet claim failed:', error);
       
-      // Provide helpful error message with link to manual faucet
       let errorMsg = error.message || 'Failed to claim from faucet';
       
       if (errorMsg.includes('unavailable') || errorMsg.includes('500')) {
@@ -380,12 +376,10 @@ export class UIController {
     }
   }
 
-  // Send tip
   async sendTip() {
     console.log('💸 Send tip clicked');
 
     const amount = parseFloat(this.elements.amountInput?.value || 0);
-    console.log('💰 Amount:', amount);
 
     if (!amount || amount <= 0) {
       this.showStatus('Please enter a valid tip amount', 'error');
@@ -393,10 +387,7 @@ export class UIController {
     }
 
     if (amount < CONFIG.UI.MIN_TIP) {
-      this.showStatus(
-        `Minimum tip is ${CONFIG.UI.MIN_TIP} STX`,
-        'error',
-      );
+      this.showStatus(`Minimum tip is ${CONFIG.UI.MIN_TIP} STX`, 'error');
       return;
     }
 
@@ -409,7 +400,6 @@ export class UIController {
     this.showStatus('Preparing transaction...', 'info');
 
     try {
-      console.log('📤 Calling walletManager.sendTip...');
       const result = await walletManager.sendTip(amount);
       console.log('✅ Transaction result:', result);
 
@@ -426,13 +416,10 @@ export class UIController {
         this.elements.amountInput.value = '';
       }
 
-      // Clear cache to force fresh data
       contractManager.clearCache();
-
-      // Refresh stats multiple times to catch the update
-      setTimeout(() => this.refreshStats(), 3000);  // First check at 3s
-      setTimeout(() => this.refreshStats(), 10000); // Second check at 10s
-      setTimeout(() => this.refreshStats(), 30000); // Final check at 30s
+      setTimeout(() => this.refreshStats(), 3000);
+      setTimeout(() => this.refreshStats(), 10000);
+      setTimeout(() => this.refreshStats(), 30000);
     } catch (error) {
       console.error('❌ Send tip failed:', error);
       if (error.message && error.message.toLowerCase().includes('cancel')) {
@@ -448,7 +435,6 @@ export class UIController {
     }
   }
 
-  // Owner-only withdraw
   async withdraw() {
     console.log('⬇️ Withdraw clicked');
 
@@ -479,15 +465,9 @@ export class UIController {
         ? result.txId.substring(0, 8) + '...'
         : 'sent';
 
-      this.showStatus(
-        `Withdrawal sent! TX: ${shortTxId}`,
-        'success',
-      );
+      this.showStatus(`Withdrawal sent! TX: ${shortTxId}`, 'success');
 
-      setTimeout(
-        () => this.refreshStats(),
-        CONFIG.TX.POLLING_INTERVAL,
-      );
+      setTimeout(() => this.refreshStats(), CONFIG.TX.POLLING_INTERVAL);
     } catch (error) {
       console.error('❌ Withdraw failed:', error);
       if (error.message && error.message.toLowerCase().includes('cancel')) {
@@ -503,28 +483,20 @@ export class UIController {
     }
   }
 
-  // Refresh contract stats
   async refreshStats() {
     console.log('🔄 Refreshing stats...');
     this.showStatus('Refreshing stats...', 'info');
 
     try {
-      const stats = await contractManager.getStats(
-        CONFIG.NETWORK.DEFAULT,
-        true,
-      );
+      const stats = await contractManager.getStats(CONFIG.NETWORK.DEFAULT, true);
       console.log('📊 Stats:', stats);
       this.state.stats = stats;
 
       if (this.elements.contractBalance) {
-        this.elements.contractBalance.textContent = formatStx(
-          stats.balance || 0,
-        );
+        this.elements.contractBalance.textContent = formatStx(stats.balance || 0);
       }
       if (this.elements.totalTips) {
-        this.elements.totalTips.textContent = formatStx(
-          stats.totalTips || 0,
-        );
+        this.elements.totalTips.textContent = formatStx(stats.totalTips || 0);
       }
 
       this.showStatus('Stats updated', 'success');
@@ -541,7 +513,6 @@ export class UIController {
     }
   }
 
-  // Show status message
   showStatus(message, type = 'info') {
     console.log(`📢 Status [${type}]:`, message);
     if (!this.elements.status) return;
@@ -556,7 +527,6 @@ export class UIController {
     }
   }
 
-  // Set loading state
   setLoading(loading) {
     console.log('⏳ Loading:', loading);
     this.state.loading = loading;
@@ -564,6 +534,7 @@ export class UIController {
     const buttons = [
       this.elements.leatherBtn,
       this.elements.xverseBtn,
+      this.elements.appkitBtn,
       this.elements.sendTipBtn,
       this.elements.refreshBtn,
       this.elements.withdrawBtn,
@@ -576,12 +547,10 @@ export class UIController {
       }
     });
     
-    // Update faucet button state after loading
     if (!loading) {
       setTimeout(() => this.updateFaucetButton(), 100);
     }
   }
 }
 
-// Export singleton instance
 export const uiController = new UIController();
