@@ -1,7 +1,8 @@
-// main.js - Application entry point (FIXED)
+// main.js - Application entry point with Farcaster SDK
 import { CONFIG } from './config.js';
 import { uiController } from './ui.js';
 import { walletManager } from './wallet.js';
+import { ensureFarcasterReady } from './safe-farcaster-init.js';
 
 console.log('===============================================');
 console.log('🚀 STACKS TIP JAR - STARTING');
@@ -20,6 +21,41 @@ async function initApp() {
   console.log('📝 Contract:', CONFIG.CONTRACT.ADDRESS);
   console.log('📦 Contract Name:', CONFIG.CONTRACT.NAME);
   
+  // Initialize Farcaster SDK first (client-only)
+  if (typeof window !== 'undefined') {
+    const sdk = await ensureFarcasterReady();
+    if (sdk) {
+      // SDK is ready - safe to use sdk.* methods
+      window.__FARCASTER_SDK__ = sdk;
+      console.log('✅ Farcaster Miniapp SDK initialized and ready');
+      
+      // Get Farcaster context if available
+      try {
+        const context = await sdk.context;
+        if (context?.user) {
+          console.log('👤 Farcaster user:', context.user.username);
+          console.log('📱 Farcaster FID:', context.user.fid);
+          
+          // Show welcome message for Farcaster users
+          setTimeout(() => {
+            const statusEl = document.getElementById('status');
+            if (statusEl) {
+              statusEl.textContent = `Welcome to Stacks Tip Jar, @${context.user.username}! 👋`;
+              statusEl.className = 'status show info';
+              setTimeout(() => statusEl.classList.remove('show'), 5000);
+            }
+          }, 1000);
+        }
+      } catch (err) {
+        console.log('ℹ️ Farcaster context not available:', err.message);
+      }
+    } else {
+      // Not inside Farcaster miniapp or SDK failed - continue gracefully
+      console.log('ℹ️ Not running in Farcaster miniapp - continuing normally');
+      window.__FARCASTER_SDK__ = null;
+    }
+  }
+  
   // Wait a bit for wallet extensions to inject
   console.log('⏳ Waiting for wallet extensions to load...');
   await new Promise(resolve => setTimeout(resolve, 500));
@@ -29,6 +65,7 @@ async function initApp() {
   console.log('  - LeatherProvider:', typeof window.LeatherProvider);
   console.log('  - HiroWalletProvider:', typeof window.HiroWalletProvider);
   console.log('  - XverseProviders:', typeof window.XverseProviders);
+  console.log('  - Farcaster SDK:', window.__FARCASTER_SDK__ ? '✅' : '❌');
   
   // Initialize wallet manager (it has its own wait logic)
   console.log('👛 Initializing wallet manager...');
@@ -103,6 +140,7 @@ window.debugWallet = {
     console.log('LeatherProvider:', window.LeatherProvider);
     console.log('HiroWalletProvider:', window.HiroWalletProvider);
     console.log('XverseProviders:', window.XverseProviders);
+    console.log('Farcaster SDK:', window.__FARCASTER_SDK__);
     console.log('WalletManager state:', walletManager.getState());
     console.log('==============================');
   },
@@ -132,6 +170,18 @@ window.debugWallet = {
     } catch (error) {
       console.error('❌ Tip test failed:', error);
     }
+  },
+  testFarcaster: () => {
+    console.log('🧪 Testing Farcaster Miniapp SDK...');
+    const sdk = window.__FARCASTER_SDK__;
+    if (sdk) {
+      console.log('✅ Farcaster Miniapp SDK available');
+      console.log('SDK object:', sdk);
+      console.log('Actions:', sdk.actions);
+      console.log('Context:', sdk.context);
+    } else {
+      console.log('❌ Farcaster Miniapp SDK not available (not in miniapp)');
+    }
   }
 };
 
@@ -140,3 +190,4 @@ console.log('   - debugWallet.checkProviders() - Check wallet detection');
 console.log('   - debugWallet.testLeather() - Test Leather connection');
 console.log('   - debugWallet.testXverse() - Test Xverse connection');
 console.log('   - debugWallet.testTip(0.1) - Test tip transaction');
+console.log('   - debugWallet.testFarcaster() - Test Farcaster SDK');
