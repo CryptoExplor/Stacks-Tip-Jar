@@ -12,7 +12,6 @@
     "imageUrl": "https://stacks-chi.vercel.app/og-image.png",
     "buttonTitle": "Send Tips",
     "splashImageUrl": "https://stacks-chi.vercel.app/splash.png",
-    "splashBackgroundColor": "#667eea",
-    "webhookUrl": "https://stacks-chi.vercel.app/api/webhook"
+    "splashBackgroundColor": "#667eea"
   }
 }
