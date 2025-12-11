@@ -1,4 +1,4 @@
-// contract.js - Smart contract interactions (FIXED v4 - Correct hex parsing)
+// contract.js - Enhanced for Clarity 4 features
 
 import { CONFIG, getNetworkEndpoint, microToStx } from './config.js';
 
@@ -7,7 +7,10 @@ export class ContractManager {
     this.cache = {
       balance: null,
       totalTips: null,
+      totalTippers: null,
+      totalTransactions: null,
       owner: null,
+      userStats: null,
       lastUpdate: null,
     };
     this.cacheTimeout = 5000;
@@ -23,13 +26,16 @@ export class ContractManager {
     this.cache = {
       balance: null,
       totalTips: null,
+      totalTippers: null,
+      totalTransactions: null,
       owner: null,
+      userStats: null,
       lastUpdate: null,
     };
   }
 
-  async fetchContractData(network = CONFIG.NETWORK.DEFAULT) {
-    if (this.isCacheValid()) {
+  async fetchContractData(network = CONFIG.NETWORK.DEFAULT, userAddress = null) {
+    if (this.isCacheValid() && !userAddress) {
       console.log('💾 Using cached contract data');
       return this.cache;
     }
@@ -41,36 +47,47 @@ export class ContractManager {
     console.log('📝 Contract ID:', contractId);
 
     try {
-      const [balanceData, tipsData, ownerData] = await Promise.allSettled([
+      // Fetch all contract data in parallel
+      const fetchPromises = [
         this.callReadOnly('get-contract-balance', [], network),
         this.callReadOnly('get-total-tips', [], network),
+        this.callReadOnly('get-total-tippers', [], network),
+        this.callReadOnly('get-total-transactions', [], network),
         this.callReadOnly('get-owner', [], network),
-      ]);
+      ];
 
-      console.log('📊 Raw API responses:');
-      console.log('  Balance:', balanceData);
-      console.log('  Tips:', tipsData);
-      console.log('  Owner:', ownerData);
+      // If user address provided, fetch user stats
+      if (userAddress) {
+        fetchPromises.push(
+          this.callReadOnly('get-tipper-stats', [this.encodePrincipal(userAddress)], network),
+          this.callReadOnly('is-premium-tipper', [this.encodePrincipal(userAddress)], network)
+        );
+      }
 
-      const balance =
-        balanceData.status === 'fulfilled'
-          ? this.extractValue(balanceData.value, 'uint')
-          : 0;
+      const results = await Promise.allSettled(fetchPromises);
 
-      const totalTips =
-        tipsData.status === 'fulfilled'
-          ? this.extractValue(tipsData.value, 'uint')
-          : 0;
+      console.log('📊 Raw API responses:', results);
 
-      const owner =
-        ownerData.status === 'fulfilled'
-          ? this.extractValue(ownerData.value, 'principal')
-          : null;
+      // Extract values
+      const balance = results[0].status === 'fulfilled' 
+        ? this.extractValue(results[0].value, 'uint') 
+        : 0;
+      
+      const totalTips = results[1].status === 'fulfilled'
+        ? this.extractValue(results[1].value, 'uint')
+        : 0;
 
-      console.log('🔢 Extracted micro-STX values:');
-      console.log('  Balance (micro):', balance);
-      console.log('  Total tips (micro):', totalTips);
-      console.log('  Owner:', owner);
+      const totalTippers = results[2].status === 'fulfilled'
+        ? this.extractValue(results[2].value, 'uint')
+        : 0;
+
+      const totalTransactions = results[3].status === 'fulfilled'
+        ? this.extractValue(results[3].value, 'uint')
+        : 0;
+
+      const owner = results[4].status === 'fulfilled'
+        ? this.extractValue(results[4].value, 'principal')
+        : null;
 
       // Convert to STX for display
       const balanceSTX = microToStx(balance);
@@ -79,26 +96,45 @@ export class ContractManager {
       console.log('💰 Converted STX values:');
       console.log('  Balance:', balanceSTX, 'STX');
       console.log('  Total tips:', totalTipsSTX, 'STX');
+      console.log('  Total tippers:', totalTippers);
+      console.log('  Total transactions:', totalTransactions);
 
-      this.cache = {
+      const data = {
         balance: balanceSTX,
         totalTips: totalTipsSTX,
+        totalTippers,
+        totalTransactions,
         owner,
         lastUpdate: Date.now(),
       };
 
-      return this.cache;
+      // Add user stats if available
+      if (userAddress && results.length > 5) {
+        const userStatsResult = results[5].status === 'fulfilled' ? results[5].value : null;
+        const isPremiumResult = results[6].status === 'fulfilled' ? results[6].value : null;
+
+        if (userStatsResult) {
+          const stats = this.extractUserStats(userStatsResult);
+          const isPremium = isPremiumResult ? this.extractValue(isPremiumResult, 'bool') : false;
+          
+          data.userStats = {
+            ...stats,
+            isPremium
+          };
+          
+          console.log('👤 User stats:', data.userStats);
+        }
+      }
+
+      this.cache = data;
+      return data;
     } catch (error) {
       console.error('❌ Failed to fetch contract data:', error);
       throw error;
     }
   }
 
-  async callReadOnly(
-    functionName,
-    functionArgs = [],
-    network = CONFIG.NETWORK.DEFAULT,
-  ) {
+  async callReadOnly(functionName, functionArgs = [], network = CONFIG.NETWORK.DEFAULT) {
     const endpoint = getNetworkEndpoint(network);
     const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
     const [contractAddress, contractName] = contractId.split('.');
@@ -122,9 +158,7 @@ export class ContractManager {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`❌ API error for ${functionName}:`, errorText);
-        throw new Error(
-          `Contract call failed: ${response.status} - ${errorText}`,
-        );
+        throw new Error(`Contract call failed: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
@@ -136,8 +170,12 @@ export class ContractManager {
     }
   }
 
-  // Decode Clarity hex value
-  // Format: 0x07 (ok response) + 01 (uint type) + 16 bytes (uint128 value)
+  // Encode principal for contract calls
+  encodePrincipal(address) {
+    // Simple hex encoding - in production, use proper Clarity encoding
+    return `0x${Buffer.from(address).toString('hex')}`;
+  }
+
   decodeClarityHex(hexString, expectedType) {
     console.log('🔍 Decoding Clarity hex:', hexString, 'Type:', expectedType);
     
@@ -146,24 +184,17 @@ export class ContractManager {
       return null;
     }
 
-    // Remove 0x prefix
     let hex = hexString.slice(2);
     console.log('📦 Hex without prefix:', hex);
 
     if (expectedType === 'uint') {
-      // Format: 07 (ok) + 01 (uint) + value bytes
-      // Check for 0701 prefix
       if (hex.startsWith('07') && hex.charAt(2) === '0' && hex.charAt(3) === '1') {
-        // Skip the 0701 prefix (4 chars)
         hex = hex.slice(4);
         console.log('🔢 Value bytes:', hex);
         
-        // The remaining bytes are the uint128 value in big-endian format
-        // Parse as BigInt first to handle large numbers
         try {
           const value = BigInt('0x' + hex);
           const numValue = Number(value);
-          
           console.log('✅ Decoded uint128:', numValue);
           return numValue;
         } catch (e) {
@@ -172,7 +203,6 @@ export class ContractManager {
         }
       }
       
-      // Fallback: try to parse the whole thing
       try {
         const value = parseInt(hex, 16);
         if (isFinite(value) && !isNaN(value)) {
@@ -186,40 +216,21 @@ export class ContractManager {
       return 0;
     }
 
+    if (expectedType === 'bool') {
+      // 0x07 (ok) + 03 (true) or 04 (false)
+      if (hex.startsWith('0703')) return true;
+      if (hex.startsWith('0704')) return false;
+      return false;
+    }
+
     if (expectedType === 'principal') {
-      // Format: 07 (ok) + 05 (standard principal) or 06 (contract principal) + address bytes
       if (hex.startsWith('0705') || hex.startsWith('0706')) {
-        const type = hex.startsWith('0705') ? 'standard' : 'contract';
-        console.log('🔑 Principal type:', type);
-        
-        // Skip 0705 or 0706 prefix
-        hex = hex.slice(4);
-        
-        // For standard principal (0705):
-        // Next byte is version (1a for testnet, 16 for mainnet)
-        // Then 20 bytes (40 hex chars) for the hash
-        
-        if (type === 'standard' && hex.length >= 42) {
-          const version = hex.slice(0, 2);
-          const hash = hex.slice(2, 42);
-          
-          console.log('📋 Version:', version, 'Hash:', hash);
-          
-          // Convert to Stacks address format
-          // This is a simplified version - proper implementation would use c32check encoding
-          // For now, we'll return the hex and rely on cached values
-          
-          // If we have a cached owner address, use that
-          if (this.cache.owner && (this.cache.owner.startsWith('ST') || this.cache.owner.startsWith('SP'))) {
-            console.log('✅ Using cached principal:', this.cache.owner);
-            return this.cache.owner;
-          }
-          
-          // Return hex format as fallback
-          return '0x0705' + hex;
+        if (this.cache.owner && (this.cache.owner.startsWith('ST') || this.cache.owner.startsWith('SP'))) {
+          console.log('✅ Using cached principal:', this.cache.owner);
+          return this.cache.owner;
         }
+        return '0x0705' + hex;
       }
-      
       return null;
     }
 
@@ -229,10 +240,9 @@ export class ContractManager {
   extractValue(clarityResponse, expectedType = 'uint') {
     if (!clarityResponse) {
       console.warn('⚠️ Empty response received');
-      return expectedType === 'uint' ? 0 : null;
+      return expectedType === 'uint' ? 0 : expectedType === 'bool' ? false : null;
     }
 
-    // Get the result field
     let result = clarityResponse.result ?? clarityResponse;
     
     if (result && typeof result === 'object' && result.result) {
@@ -243,19 +253,11 @@ export class ContractManager {
 
     if (expectedType === 'uint') {
       if (typeof result === 'string') {
-        // Handle hex format (0x0701...)
         if (result.startsWith('0x')) {
           const decoded = this.decodeClarityHex(result, 'uint');
-          if (decoded !== null && decoded !== 0) {
-            return decoded;
-          }
-          
-          // If decoded is 0, might be legitimately 0, so return it
-          console.log('✅ Decoded value:', decoded);
-          return decoded;
+          if (decoded !== null) return decoded;
         }
         
-        // Handle "u123" format
         if (result.startsWith('u')) {
           const numStr = result.slice(1);
           const parsed = parseInt(numStr, 10);
@@ -263,7 +265,6 @@ export class ContractManager {
           return parsed;
         }
         
-        // Try direct parse
         const num = parseInt(result, 10);
         if (isFinite(num) && !isNaN(num)) {
           console.log('✅ Direct parse:', num);
@@ -280,17 +281,20 @@ export class ContractManager {
       return 0;
     }
 
+    if (expectedType === 'bool') {
+      if (typeof result === 'string' && result.startsWith('0x')) {
+        return this.decodeClarityHex(result, 'bool');
+      }
+      return Boolean(result);
+    }
+
     if (expectedType === 'principal') {
       if (typeof result === 'string') {
-        // Handle hex format
         if (result.startsWith('0x')) {
           const decoded = this.decodeClarityHex(result, 'principal');
-          if (decoded) {
-            return decoded;
-          }
+          if (decoded) return decoded;
         }
         
-        // Handle string format
         let principal = result;
         if (principal.startsWith("'")) {
           principal = principal.slice(1);
@@ -308,57 +312,48 @@ export class ContractManager {
     return result;
   }
 
-  async getBalance(network = CONFIG.NETWORK.DEFAULT, forceRefresh = false) {
-    if (forceRefresh) {
-      this.clearCache();
+  // Extract user stats from tuple
+  extractUserStats(response) {
+    const result = response.result || response;
+    
+    // Handle tuple format
+    if (typeof result === 'object' && result !== null) {
+      return {
+        totalTipped: microToStx(this.extractValue(result['total-tipped'] || result.totalTipped || 0, 'uint')),
+        tipCount: this.extractValue(result['tip-count'] || result.tipCount || 0, 'uint'),
+        lastTipBlock: this.extractValue(result['last-tip-block'] || result.lastTipBlock || 0, 'uint'),
+        isPremium: this.extractValue(result['is-premium'] || result.isPremium || false, 'bool')
+      };
     }
+    
+    return {
+      totalTipped: 0,
+      tipCount: 0,
+      lastTipBlock: 0,
+      isPremium: false
+    };
+  }
+
+  async getBalance(network = CONFIG.NETWORK.DEFAULT, forceRefresh = false) {
+    if (forceRefresh) this.clearCache();
     const data = await this.fetchContractData(network);
     return data.balance;
   }
 
   async getTotalTips(network = CONFIG.NETWORK.DEFAULT, forceRefresh = false) {
-    if (forceRefresh) {
-      this.clearCache();
-    }
+    if (forceRefresh) this.clearCache();
     const data = await this.fetchContractData(network);
     return data.totalTips;
   }
 
-  async getOwner(network = CONFIG.NETWORK.DEFAULT, forceRefresh = false) {
-    if (forceRefresh) {
-      this.clearCache();
-    }
-    const data = await this.fetchContractData(network);
-    return data.owner;
+  async getStats(network = CONFIG.NETWORK.DEFAULT, forceRefresh = false, userAddress = null) {
+    if (forceRefresh) this.clearCache();
+    return await this.fetchContractData(network, userAddress);
   }
 
-  async getStats(network = CONFIG.NETWORK.DEFAULT, forceRefresh = false) {
-    if (forceRefresh) {
-      this.clearCache();
-    }
-    return await this.fetchContractData(network);
-  }
-
-  async verifyTransaction(txId, network = CONFIG.NETWORK.DEFAULT) {
-    const endpoint = getNetworkEndpoint(network);
-    const url = `${endpoint}/extended/v1/tx/${txId}`;
-
-    try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        return { status: 'unknown', confirmed: false };
-      }
-      const data = await response.json();
-      return {
-        status: data.tx_status,
-        confirmed: data.tx_status === 'success',
-        blockHeight: data.block_height,
-        fee: data.fee_rate,
-      };
-    } catch (error) {
-      console.error('Failed to verify transaction:', error);
-      return { status: 'error', confirmed: false };
-    }
+  async getUserStats(userAddress, network = CONFIG.NETWORK.DEFAULT) {
+    const data = await this.fetchContractData(network, userAddress);
+    return data.userStats;
   }
 }
 
