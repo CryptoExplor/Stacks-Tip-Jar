@@ -1,12 +1,19 @@
-// main.js - Application entry point with Farcaster SDK
+// main.js - Application entry point with IMMEDIATE Farcaster ready() call
 import { CONFIG } from './config.js';
 import { uiController } from './ui.js';
 import { walletManager } from './wallet.js';
-import { ensureFarcasterReady } from './safe-farcaster-init.js';
+import { ensureFarcasterReady, callReadyIfAvailable } from './safe-farcaster-init.js';
 
 console.log('===============================================');
 console.log('🚀 STACKS TIP JAR - STARTING');
 console.log('===============================================');
+
+// CRITICAL: Try to call ready() IMMEDIATELY if SDK is available
+// This must happen before ANY async operations
+if (typeof window !== 'undefined') {
+  console.log('🎯 Attempting immediate ready() call...');
+  callReadyIfAvailable();
+}
 
 // Initialize app when DOM is ready
 if (document.readyState === 'loading') {
@@ -21,17 +28,24 @@ async function initApp() {
   console.log('📝 Contract:', CONFIG.CONTRACT.ADDRESS);
   console.log('📦 Contract Name:', CONFIG.CONTRACT.NAME);
   
-  // Initialize Farcaster SDK first (client-only)
+  // Initialize Farcaster SDK as early as possible (client-only)
   if (typeof window !== 'undefined') {
+    console.log('🔄 Initializing Farcaster SDK...');
+    
     const sdk = await ensureFarcasterReady();
+    
     if (sdk) {
       // SDK is ready - safe to use sdk.* methods
       window.__FARCASTER_SDK__ = sdk;
       console.log('✅ Farcaster Miniapp SDK initialized and ready');
       
-      // Get Farcaster context if available
+      // Get Farcaster context if available (non-blocking)
       try {
-        const context = await sdk.context;
+        const context = await Promise.race([
+          sdk.context,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Context timeout')), 2000))
+        ]);
+        
         if (context?.user) {
           console.log('👤 Farcaster user:', context.user.username);
           console.log('📱 Farcaster FID:', context.user.fid);
@@ -182,6 +196,20 @@ window.debugWallet = {
     } else {
       console.log('❌ Farcaster Miniapp SDK not available (not in miniapp)');
     }
+  },
+  callReady: () => {
+    console.log('🧪 Manually calling sdk.actions.ready()...');
+    const sdk = window.__FARCASTER_SDK__;
+    if (sdk && typeof sdk.actions?.ready === 'function') {
+      try {
+        sdk.actions.ready();
+        console.log('✅ Ready called successfully');
+      } catch (err) {
+        console.error('❌ Ready call failed:', err);
+      }
+    } else {
+      console.log('❌ SDK or ready() not available');
+    }
   }
 };
 
@@ -191,3 +219,4 @@ console.log('   - debugWallet.testLeather() - Test Leather connection');
 console.log('   - debugWallet.testXverse() - Test Xverse connection');
 console.log('   - debugWallet.testTip(0.1) - Test tip transaction');
 console.log('   - debugWallet.testFarcaster() - Test Farcaster SDK');
+console.log('   - debugWallet.callReady() - Manually call ready()');
