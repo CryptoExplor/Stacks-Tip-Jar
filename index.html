@@ -203,41 +203,7 @@
     </footer>
   </div>
 
-  <!-- Scripts -->
+  <!-- Main application script (handles Farcaster SDK internally) -->
   <script type="module" src="/main.js"></script>
-  
-  <!-- Farcaster SDK -->
-  <script type="module">
-    import { sdk } from '@farcaster/miniapp-sdk';
-    
-    // Initialize Farcaster SDK
-    const initFarcaster = async () => {
-      try {
-        const context = await sdk.context;
-        console.log('✅ Farcaster context:', context);
-        
-        // Add Farcaster-specific features
-        if (context.user) {
-          console.log('👤 Farcaster user:', context.user.username);
-          
-          // You can customize the experience based on Farcaster user
-          const statusEl = document.getElementById('status');
-          if (statusEl) {
-            statusEl.textContent = `Welcome, @${context.user.username}! 👋`;
-            statusEl.className = 'status show info';
-          }
-        }
-        
-        // Set SDK as ready
-        await sdk.actions.ready({
-          disableNativeGestures: false
-        });
-      } catch (error) {
-        console.log('ℹ️ Not running in Farcaster context:', error.message);
-      }
-    };
-    
-    initFarcaster();
-  </script>
 </body>
 </html>
