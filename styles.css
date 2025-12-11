@@ -15,6 +15,7 @@
   --warning: #f59e0b;
   --info: #3b82f6;
   --faucet: #8b5cf6;
+  --appkit: #3396ff;
   --premium: #fbbf24;
   
   --bg-primary: #ffffff;
@@ -282,6 +283,46 @@ h1 {
   font-size: 14px;
 }
 
+
+/* Faucet section */
+.faucet-section {
+  background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
+  border: 2px solid var(--faucet);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-2xl);
+  animation: slideDown 0.3s ease;
+}
+
+.faucet-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+  color: #6b21a8;
+}
+
+.faucet-icon {
+  font-size: 24px;
+}
+
+.faucet-text {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.btn-faucet {
+  background: linear-gradient(135deg, var(--faucet) 0%, #7c3aed 100%);
+  color: white;
+  width: 100%;
+  margin-bottom: 0 !important;
+}
+
+.btn-faucet:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(139, 92, 246, 0.4);
+}
+
 /* Sections */
 .section-label {
   display: block;
@@ -365,45 +406,6 @@ h1 {
 
 .install-notice a:hover {
   text-decoration: underline;
-}
-
-/* Faucet section */
-.faucet-section {
-  background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
-  border: 2px solid var(--faucet);
-  border-radius: var(--radius-md);
-  padding: var(--space-lg);
-  margin-bottom: var(--space-2xl);
-  animation: slideDown 0.3s ease;
-}
-
-.faucet-info {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-md);
-  color: #6b21a8;
-}
-
-.faucet-icon {
-  font-size: 24px;
-}
-
-.faucet-text {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.btn-faucet {
-  background: linear-gradient(135deg, var(--faucet) 0%, #7c3aed 100%);
-  color: white;
-  width: 100%;
-  margin-bottom: 0 !important;
-}
-
-.btn-faucet:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 20px rgba(139, 92, 246, 0.4);
 }
 
 /* Input group */
@@ -506,6 +508,17 @@ input::placeholder {
 
 .btn-secondary:hover:not(:disabled) {
   background: var(--bg-tertiary);
+}
+
+.btn-appkit {
+  background: linear-gradient(135deg, var(--appkit) 0%, #2563eb 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(51, 150, 255, 0.3);
+}
+
+.btn-appkit:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(51, 150, 255, 0.5);
 }
 
 .btn:disabled {
