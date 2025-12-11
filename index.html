@@ -2,30 +2,42 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Stacks Tip Jar</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Stacks Tip Jar - Farcaster Miniapp</title>
   
   <!-- SEO Meta Tags -->
-  <meta name="description" content="Send STX tips on Bitcoin L2 - A simple tip jar built on Stacks blockchain" />
-  <meta name="keywords" content="stacks, bitcoin, tip jar, cryptocurrency, STX" />
+  <meta name="description" content="Send STX tips on Bitcoin L2 - Built with Clarity 4. A Farcaster miniapp for the Stacks ecosystem." />
+  <meta name="keywords" content="stacks, bitcoin, tip jar, cryptocurrency, STX, farcaster, miniapp, clarity4, web3" />
   
   <!-- Open Graph / Farcaster Frame -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://stacks-chi.vercel.app" />
-  <meta property="og:title" content="Stacks Tip Jar ⚡" />
-  <meta property="og:description" content="Send STX tips on Bitcoin L2" />
+  <meta property="og:title" content="Stacks Tip Jar ⚡ - Farcaster Miniapp" />
+  <meta property="og:description" content="Send STX tips on Bitcoin L2 with Clarity 4 smart contracts" />
   <meta property="og:image" content="https://stacks-chi.vercel.app/og-image.png" />
   
-  <!-- Farcaster Frame Tags -->
+  <!-- Farcaster Frame Tags (Enhanced for Miniapp) -->
   <meta property="fc:frame" content="vNext" />
   <meta property="fc:frame:image" content="https://stacks-chi.vercel.app/og-image.png" />
   <meta property="fc:frame:image:aspect_ratio" content="1:1" />
-  <meta property="fc:frame:button:1" content="Send Tip" />
+  <meta property="fc:frame:button:1" content="Send Tip 💸" />
   <meta property="fc:frame:button:1:action" content="link" />
   <meta property="fc:frame:button:1:target" content="https://stacks-chi.vercel.app" />
+  <meta property="fc:frame:button:2" content="View Stats 📊" />
+  <meta property="fc:frame:button:2:action" content="post" />
+  
+  <!-- Farcaster Miniapp Specific -->
+  <meta name="fc:frame:app_version" content="2.0.0" />
+  <meta name="fc:frame:manifest" content="https://stacks-chi.vercel.app/.well-known/farcaster.json" />
+  
+  <!-- PWA Support -->
+  <meta name="theme-color" content="#667eea" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="apple-touch-icon" href="/icon.png" />
   
   <!-- Styles -->
   <link rel="stylesheet" href="/styles.css" />
@@ -34,7 +46,11 @@
   <div class="container">
     <header class="header">
       <h1>⚡ Stacks Tip Jar</h1>
-      <p class="subtitle">Send STX tips on Bitcoin L2</p>
+      <p class="subtitle">Send STX tips on Bitcoin L2 • Built with Clarity 4</p>
+      <div class="builder-badge">
+        <span class="badge-icon">🏆</span>
+        <span class="badge-text">Stacks Builder Challenge</span>
+      </div>
     </header>
 
     <!-- Wallet Info (shown when connected) -->
@@ -44,9 +60,13 @@
         <span class="wallet-badge" id="walletBadge"></span>
       </div>
       <div class="wallet-address" id="walletAddress"></div>
+      <div class="premium-status" id="premiumStatus" style="display: none;">
+        <span class="premium-icon">👑</span>
+        <span class="premium-text">Premium Tipper</span>
+      </div>
     </div>
 
-    <!-- Contract Stats -->
+    <!-- Enhanced Stats Section -->
     <div class="stats" id="stats">
       <div class="stat-row">
         <span class="stat-label">Network:</span>
@@ -59,6 +79,18 @@
       <div class="stat-row">
         <span class="stat-label">Total Tips Received:</span>
         <span class="stat-value" id="totalTips">--</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Total Tippers:</span>
+        <span class="stat-value" id="totalTippers">--</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Total Transactions:</span>
+        <span class="stat-value" id="totalTransactions">--</span>
+      </div>
+      <div class="stat-row" id="userStatsRow" style="display: none;">
+        <span class="stat-label">Your Total Tips:</span>
+        <span class="stat-value" id="userTotalTips">--</span>
       </div>
     </div>
 
@@ -76,9 +108,7 @@
         </button>
       </div>
       
-      <!-- NEW: AppKit Connect Button -->
       <button class="btn btn-appkit" id="appkitBtn">
-        <span class="btn-icon">🌐</span>
         <span>Connect Wallet</span>
       </button>
       
@@ -130,6 +160,15 @@
         <span>Send Tip</span>
       </button>
 
+      <!-- Premium Achievement -->
+      <div class="premium-info" id="premiumInfo" style="display: none;">
+        <p>🎯 Tip 10+ STX total to become a Premium Tipper!</p>
+        <div class="progress-bar">
+          <div class="progress-fill" id="premiumProgress"></div>
+        </div>
+        <p class="progress-text" id="premiumProgressText">0 / 10 STX</p>
+      </div>
+
       <!-- Owner-only Withdraw Button -->
       <button id="withdrawBtn" class="btn btn-secondary" style="display: none;">
         <span class="btn-icon">⬇️</span>
@@ -153,20 +192,52 @@
     <!-- Footer -->
     <footer class="footer">
       <p>Built on <strong>Stacks</strong> • Secured by <strong>Bitcoin</strong></p>
+      <p>Enhanced with <strong>Clarity 4</strong> • Farcaster Ready</p>
       <p class="footer-links">
         <a href="https://github.com/CryptoExplor/stacks-tip-jar" target="_blank" rel="noopener">GitHub</a>
         <span>•</span>
-        <a href="https://stacks.co" target="_blank" rel="noopener">Learn about Stacks</a>
+        <a href="https://docs.stacks.co/whats-new/clarity-4-is-now-live" target="_blank" rel="noopener">Clarity 4 Docs</a>
+        <span>•</span>
+        <a href="https://stacks.co" target="_blank" rel="noopener">Stacks.co</a>
       </p>
     </footer>
   </div>
 
   <!-- Scripts -->
   <script type="module" src="/main.js"></script>
-  <!-- Farcaster SDK (UNCHANGED) -->
-    <script type="module">
-        import { sdk } from '@farcaster/miniapp-sdk';
-        sdk.actions.ready({ disableNativeGestures: true });
-    </script>
+  
+  <!-- Farcaster SDK -->
+  <script type="module">
+    import { sdk } from '@farcaster/miniapp-sdk';
+    
+    // Initialize Farcaster SDK
+    const initFarcaster = async () => {
+      try {
+        const context = await sdk.context;
+        console.log('✅ Farcaster context:', context);
+        
+        // Add Farcaster-specific features
+        if (context.user) {
+          console.log('👤 Farcaster user:', context.user.username);
+          
+          // You can customize the experience based on Farcaster user
+          const statusEl = document.getElementById('status');
+          if (statusEl) {
+            statusEl.textContent = `Welcome, @${context.user.username}! 👋`;
+            statusEl.className = 'status show info';
+          }
+        }
+        
+        // Set SDK as ready
+        await sdk.actions.ready({
+          disableNativeGestures: false
+        });
+      } catch (error) {
+        console.log('ℹ️ Not running in Farcaster context:', error.message);
+      }
+    };
+    
+    initFarcaster();
+  </script>
 </body>
 </html>
