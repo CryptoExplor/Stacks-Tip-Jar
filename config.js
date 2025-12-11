@@ -3,7 +3,7 @@ export const CONFIG = {
   // Contract configuration
   CONTRACT: {
     ADDRESS: 'ST3ZQXJPR493FCYNAVFX1YSK7EMT6JF909E3SDNQG',
-    NAME: 'tip-jar',
+    NAME: 'tip-jar-v2',
     OWNER: 'ST3ZQXJPR493FCYNAVFX1YSK7EMT6JF909E3SDNQG'
   },
 
