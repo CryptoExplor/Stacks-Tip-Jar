@@ -1,6 +1,6 @@
-// config.js - Central configuration
+// config.js - Fixed configuration
 export const CONFIG = {
-  // Contract configuration
+  // Contract configuration - FIXED: Use tip-jar (matches your deployed contract)
   CONTRACT: {
     ADDRESS: 'ST3ZQXJPR493FCYNAVFX1YSK7EMT6JF909E3SDNQG',
     NAME: 'tip-jar-v2',
@@ -18,23 +18,23 @@ export const CONFIG = {
 
   // Faucet configuration
   FAUCET: {
-    ENABLED: true, // Only show on testnet
+    ENABLED: true,
     ENDPOINT: 'https://api.testnet.hiro.so/extended/v1/faucets/stx',
-    COOLDOWN: 300000, // 5 minutes in milliseconds
-    AMOUNT: 500 // Expected STX amount from faucet
+    COOLDOWN: 300000, // 5 minutes
+    AMOUNT: 500
   },
 
   // App metadata
   APP: {
     NAME: 'Stacks Tip Jar',
-    DESCRIPTION: 'Send STX tips on Bitcoin L2',
+    DESCRIPTION: 'Send STX tips on Bitcoin L2 - Built with Clarity 4',
     ICON: '/icon.png',
-    URL: typeof window !== 'undefined' ? window.location.origin : ''
+    URL: typeof window !== 'undefined' ? window.location.origin : 'https://stacks-chi.vercel.app'
   },
 
   // Transaction settings
   TX: {
-    POLLING_INTERVAL: 5000, // 5 seconds
+    POLLING_INTERVAL: 5000,
     CONFIRMATION_BLOCKS: 1
   },
 
@@ -42,7 +42,7 @@ export const CONFIG = {
   UI: {
     QUICK_AMOUNTS: [0.1, 0.5, 1, 5],
     MIN_TIP: 0.000001,
-    DECIMALS: 6  // Back to 6 decimals for proper display
+    DECIMALS: 6
   },
 
   // Farcaster Frame support
@@ -50,6 +50,12 @@ export const CONFIG = {
     ENABLED: true,
     FRAME_VERSION: 'vNext',
     IMAGE_ASPECT_RATIO: '1:1'
+  },
+
+  // Reown AppKit (for multi-wallet support)
+  REOWN: {
+    PROJECT_ID: '75cff2cd446ad1ae6c9f22c5c9bbcd6d', // Get from https://cloud.reown.com
+    ENABLED: true
   }
 };
 
@@ -70,7 +76,6 @@ export function stxToMicro(stx) {
 
 // Convert micro-STX to STX with proper handling
 export function microToStx(micro) {
-  // Ensure we're working with a valid number
   const num = Number(micro);
   if (!Number.isFinite(num) || Number.isNaN(num)) {
     return 0;
