@@ -41,6 +41,27 @@
   
   <!-- Styles -->
   <link rel="stylesheet" href="/styles.css" />
+  
+  <!-- CRITICAL: Call Farcaster ready() as EARLY as possible -->
+  <script type="module">
+    // This must run BEFORE any other scripts to dismiss the splash screen
+    (async function() {
+      try {
+        console.log('🎯 Early ready() attempt - importing SDK...');
+        const { sdk } = await import('@farcaster/miniapp-sdk');
+        
+        if (sdk && typeof sdk.actions?.ready === 'function') {
+          console.log('✅ Calling sdk.actions.ready() from inline script');
+          sdk.actions.ready();
+          
+          // Store for later use
+          window.__FARCASTER_SDK__ = sdk;
+        }
+      } catch (err) {
+        console.log('ℹ️ Not in Farcaster or SDK not available:', err.message);
+      }
+    })();
+  </script>
 </head>
 <body>
   <div class="container">
