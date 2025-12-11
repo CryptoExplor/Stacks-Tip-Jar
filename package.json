@@ -1,7 +1,7 @@
 {
   "name": "stacks-tip-jar",
   "version": "2.0.0",
-  "description": "A Stacks tip jar dApp with Farcaster SDK and Reown AppKit wallet support",
+  "description": "A Stacks tip jar dApp with Farcaster Frame support",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,11 +11,6 @@
   "dependencies": {
     "@stacks/transactions": "^6.13.0",
     "@farcaster/miniapp-sdk": "latest",
-    "@farcaster/miniapp-wagmi-connector": "latest",
-    "@reown/appkit": "^1.8.14",
-    "@reown/appkit-adapter-wagmi": "^1.8.14",
-    "@wagmi/core": "^2.13.4",
-    "viem": "^2.21.0",
     "buffer": "^6.0.3"
   },
   "devDependencies": {
@@ -28,10 +23,7 @@
     "bitcoin",
     "tip-jar",
     "web3",
-    "farcaster",
-    "reown",
-    "appkit",
-    "wallet"
+    "farcaster"
   ],
   "author": "CryptoExplorer",
   "license": "MIT",
