@@ -25,14 +25,16 @@ export class WalletManager {
     
     try {
       const { createAppKit } = await import('@reown/appkit');
-      const { BitcoinAdapter } = await import('@reown/appkit-adapter-bitcoin');
+      // rename the imported class to avoid redeclaring the same identifier
+      const { BitcoinAdapter: BitcoinAdapterClass } = await import('@reown/appkit-adapter-bitcoin');
       
-      const BitcoinAdapter = new BitcoinAdapter({
+      // create adapter instance (different name from class)
+      const bitcoinAdapter = new BitcoinAdapterClass({
         network: CONFIG.NETWORK.DEFAULT
       });
       
       this.appkit = createAppKit({
-        adapters: [BitcoinAdapter],
+        adapters: [bitcoinAdapter],
         networks: [{
           id: CONFIG.NETWORK.DEFAULT === 'mainnet' ? 'stacks' : 'stacks-testnet',
           name: CONFIG.NETWORK.DEFAULT === 'mainnet' ? 'Stacks' : 'Stacks Testnet',
@@ -55,17 +57,21 @@ export class WalletManager {
         }
       });
 
-      // Subscribe to AppKit events
-      this.appkit.subscribeEvents((event) => {
-        console.log('🌐 AppKit event:', event);
-        if (event.data?.address) {
-          this.address = event.data.address;
-          this.walletType = 'appkit';
-          this.autoReconnected = false;
-          this.saveWalletState();
-          this.notify();
-        }
-      });
+      // Subscribe to AppKit events (keep simple; adapt if AppKit API differs)
+      if (typeof this.appkit.subscribeEvents === 'function') {
+        this.appkit.subscribeEvents((event) => {
+          console.log('🌐 AppKit event:', event);
+          if (event.data?.address) {
+            this.address = event.data.address;
+            this.walletType = 'appkit';
+            this.autoReconnected = false;
+            this.saveWalletState();
+            this.notify();
+          }
+        });
+      } else {
+        console.warn('⚠️ appkit.subscribeEvents not available on this AppKit instance');
+      }
 
       console.log('✅ AppKit initialized');
     } catch (error) {
@@ -80,8 +86,12 @@ export class WalletManager {
         walletType: this.walletType,
         timestamp: Date.now()
       };
-      localStorage.setItem('stacks_wallet_state', JSON.stringify(state));
-      console.log('💾 Saved wallet state:', state);
+      try {
+        localStorage.setItem('stacks_wallet_state', JSON.stringify(state));
+        console.log('💾 Saved wallet state:', state);
+      } catch (err) {
+        console.warn('⚠️ Could not save wallet state to localStorage', err);
+      }
     }
   }
 
@@ -111,14 +121,18 @@ export class WalletManager {
       }
     } catch (error) {
       console.error('❌ Failed to load wallet state:', error);
-      localStorage.removeItem('stacks_wallet_state');
+      try { localStorage.removeItem('stacks_wallet_state'); } catch {}
     }
     return false;
   }
 
   clearWalletState() {
-    localStorage.removeItem('stacks_wallet_state');
-    console.log('🗑️ Cleared wallet state');
+    try {
+      localStorage.removeItem('stacks_wallet_state');
+      console.log('🗑️ Cleared wallet state');
+    } catch (err) {
+      console.warn('⚠️ Could not clear wallet state', err);
+    }
   }
 
   wasAutoReconnected() {
@@ -330,8 +344,12 @@ export class WalletManager {
     }
 
     try {
-      await this.appkit.open();
-      
+      if (typeof this.appkit.open === 'function') {
+        await this.appkit.open();
+      } else if (typeof this.appkit.connect === 'function') {
+        await this.appkit.connect();
+      }
+
       // Wait for connection with timeout
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
@@ -359,8 +377,8 @@ export class WalletManager {
   disconnect() {
     console.log('🔌 Disconnecting wallet...');
     
-    if (this.walletType === 'appkit' && this.appkit) {
-      this.appkit.disconnect();
+    if (this.walletType === 'appkit' && this.appkit && typeof this.appkit.disconnect === 'function') {
+      try { this.appkit.disconnect(); } catch (e) { console.warn('⚠️ appkit.disconnect failed', e); }
     }
     
     this.address = null;
