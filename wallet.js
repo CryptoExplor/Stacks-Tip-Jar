@@ -52,6 +52,7 @@ export class WalletManager {
         projectId: '75cff2cd446ad1ae6c9f22c5c9bbcd6d',
         features: {
           analytics: true,
+          connectMethodsOrder: ["wallet"],
           email: false,
           socials: []
         }
