@@ -25,7 +25,7 @@ export class WalletManager {
     
     try {
       const { createAppKit } = await import('@reown/appkit');
-      const { StacksAdapter } = await import('@reown/appkit-adapter-stacks');
+      const { StacksAdapter } = await import('@reown/appkit-adapter-bitcoin');
       
       const stacksAdapter = new StacksAdapter({
         network: CONFIG.NETWORK.DEFAULT
