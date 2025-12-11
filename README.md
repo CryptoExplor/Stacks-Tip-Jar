@@ -70,7 +70,7 @@ Edit `config.js` and update the contract address:
 export const CONFIG = {
   CONTRACT: {
     ADDRESS: 'ST3ZQXJPR493FCYNAVFX1YSK7EMT6JF909E3SDNQG', // Your deployed contract
-    NAME: 'tip-jar',
+    NAME: 'tip-jar-v2',
     OWNER: 'ST3ZQXJPR493FCYNAVFX1YSK7EMT6JF909E3SDNQG'
   },
   // ... rest of config
@@ -80,7 +80,7 @@ export const CONFIG = {
 3. **Deploy the smart contract**
 
 - Go to [Stacks Explorer Sandbox](https://explorer.hiro.so/sandbox/deploy?chain=testnet)
-- Copy code from `contracts/tip-jar.clar`
+- Copy code from `contracts/tip-jar-v2.clar`
 - Deploy to testnet or mainnet
 - Save your contract address
 
