@@ -12,7 +12,7 @@
     "@stacks/transactions": "^6.13.0",
     "@farcaster/miniapp-sdk": "latest",
     "@reown/appkit": "^1.8.14",
-    "@reown/appkit-adapter-stacks": "^1.8.14",
+    "@reown/appkit-adapter-bitcoin": "^1.8.14",
     "buffer": "^6.0.3"
   },
   "devDependencies": {
