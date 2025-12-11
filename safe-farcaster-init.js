@@ -1,16 +1,15 @@
-// src/safe-farcaster-init.js
+// safe-farcaster-init.js
 // Client-only helper to safely initialize Farcaster Miniapp SDK.
-// Returns sdk object if ready, else null.
-// Usage: const sdk = await ensureFarcasterReady();
+// CRITICAL: Call ready() IMMEDIATELY to dismiss splash screen
 
 export async function ensureFarcasterReady({
   importTimeout = 5000,
-  readyTimeout = 30000,
-  pollInterval = 200
+  readyTimeout = 10000,
+  pollInterval = 100
 } = {}) {
   if (typeof window === 'undefined') return null;
 
-  // dynamic import with timeout
+  // Helper to race promise with timeout
   const promiseWithTimeout = (promise, ms) =>
     new Promise((resolve, reject) => {
       const t = setTimeout(() => reject(new Error('import timeout')), ms);
@@ -18,42 +17,92 @@ export async function ensureFarcasterReady({
     });
 
   try {
+    // Import SDK with timeout
     const mod = await promiseWithTimeout(import('@farcaster/miniapp-sdk'), importTimeout);
     const sdk = mod?.sdk || mod?.default || mod;
 
     if (!sdk || typeof sdk.actions !== 'object') {
-      console.warn('Farcaster frame-sdk loaded but no actions object found.');
+      console.warn('Farcaster SDK loaded but no actions object found.');
       return null;
     }
 
-    // wait for actions.ready to exist
-    const waitFor = (fn, timeout, interval) =>
-      new Promise(resolve => {
-        const deadline = Date.now() + timeout;
-        (function poll() {
-          try { if (fn()) return resolve(true); } catch(e) {}
-          if (Date.now() > deadline) return resolve(false);
-          setTimeout(poll, interval);
-        })();
-      });
+    // CRITICAL: Call ready() IMMEDIATELY if available
+    // Don't wait for any conditions - call it right away
+    if (typeof sdk.actions.ready === 'function') {
+      console.log('🎯 Calling sdk.actions.ready() immediately...');
+      
+      try {
+        // Call ready without waiting - this dismisses the splash screen
+        sdk.actions.ready();
+        console.log('✅ Farcaster SDK ready() called successfully');
+        
+        // Return SDK immediately - don't wait
+        return sdk;
+      } catch (err) {
+        console.warn('⚠️ sdk.actions.ready() threw error:', err);
+        // Return SDK anyway - ready() was called even if it errored
+        return sdk;
+      }
+    } else {
+      // If ready() isn't available yet, poll for it but with short timeout
+      console.log('⏳ Waiting for sdk.actions.ready to become available...');
+      
+      const waitFor = (fn, timeout, interval) =>
+        new Promise(resolve => {
+          const deadline = Date.now() + timeout;
+          (function poll() {
+            try { 
+              if (fn()) {
+                resolve(true);
+                return;
+              }
+            } catch(e) {}
+            if (Date.now() > deadline) {
+              resolve(false);
+              return;
+            }
+            setTimeout(poll, interval);
+          })();
+        });
 
-    const ok = await waitFor(() => typeof sdk.actions.ready === 'function', readyTimeout, pollInterval);
+      const ok = await waitFor(() => typeof sdk.actions.ready === 'function', readyTimeout, pollInterval);
 
-    if (!ok) {
-      console.warn('Farcaster sdk.actions.ready not available within timeout');
-      return null;
-    }
-
-    try {
-      await sdk.actions.ready();
-      console.log('✅ Farcaster SDK ready');
+      if (ok && typeof sdk.actions.ready === 'function') {
+        try {
+          sdk.actions.ready();
+          console.log('✅ Farcaster SDK ready() called after polling');
+        } catch (err) {
+          console.warn('⚠️ sdk.actions.ready() threw after polling:', err);
+        }
+      } else {
+        console.warn('⚠️ sdk.actions.ready not available within timeout');
+      }
+      
       return sdk;
-    } catch (err) {
-      console.warn('sdk.actions.ready() threw:', err);
-      return null;
     }
   } catch (err) {
-    console.warn('Farcaster frame-sdk import/ready failed:', err);
+    console.warn('Farcaster SDK import/ready failed:', err);
     return null;
   }
+}
+
+// Alternative: Call ready() synchronously if SDK is already loaded
+export function callReadyIfAvailable() {
+  if (typeof window === 'undefined') return false;
+  
+  try {
+    // Check if SDK is already in window
+    const sdk = window.sdk || window.__FARCASTER_SDK__;
+    
+    if (sdk && typeof sdk.actions?.ready === 'function') {
+      console.log('🎯 Calling ready() on existing SDK...');
+      sdk.actions.ready();
+      console.log('✅ Ready called on existing SDK');
+      return true;
+    }
+  } catch (err) {
+    console.warn('⚠️ Error calling ready on existing SDK:', err);
+  }
+  
+  return false;
 }
