@@ -16,7 +16,7 @@
   <meta property="og:description" content="Send STX tips on Bitcoin L2 with Clarity 4 smart contracts" />
   <meta property="og:image" content="https://stacks-chi.vercel.app/og-image.png" />
   
-  <!-- Farcaster Frame Tags (Enhanced for Miniapp) -->
+  <!-- Farcaster Frame Tags -->
   <meta property="fc:frame" content="vNext" />
   <meta property="fc:frame:image" content="https://stacks-chi.vercel.app/og-image.png" />
   <meta property="fc:frame:image:aspect_ratio" content="1:1" />
@@ -42,23 +42,52 @@
   <!-- Styles -->
   <link rel="stylesheet" href="/styles.css" />
   
-  <!-- CRITICAL: Call Farcaster ready() as EARLY as possible -->
+  <!-- 
+    CRITICAL: Import Farcaster SDK FIRST before any other scripts
+    This ensures ready() is called as early as possible
+  -->
   <script type="module">
-    // This must run BEFORE any other scripts to dismiss the splash screen
-    (async function() {
+    (async () => {
+      console.log('🎯 [INLINE] Initializing Farcaster SDK...');
+      
       try {
-        console.log('🎯 Early ready() attempt - importing SDK...');
+        // Import SDK
         const { sdk } = await import('@farcaster/miniapp-sdk');
         
-        if (sdk && typeof sdk.actions?.ready === 'function') {
-          console.log('✅ Calling sdk.actions.ready() from inline script');
-          sdk.actions.ready();
-          
-          // Store for later use
-          window.__FARCASTER_SDK__ = sdk;
+        if (!sdk) {
+          console.log('ℹ️ [INLINE] SDK not available');
+          return;
         }
-      } catch (err) {
-        console.log('ℹ️ Not in Farcaster or SDK not available:', err.message);
+        
+        console.log('✅ [INLINE] SDK imported');
+        
+        // Call ready() IMMEDIATELY
+        if (sdk.actions && typeof sdk.actions.ready === 'function') {
+          console.log('🚀 [INLINE] Calling sdk.actions.ready()...');
+          
+          // Try async call first
+          try {
+            await sdk.actions.ready();
+            console.log('✅ [INLINE] ready() called (async)');
+          } catch (err) {
+            // Fallback to sync call
+            console.log('⚠️ [INLINE] Async ready() failed, trying sync...');
+            try {
+              sdk.actions.ready();
+              console.log('✅ [INLINE] ready() called (sync)');
+            } catch (err2) {
+              console.error('❌ [INLINE] Both ready() calls failed:', err2);
+            }
+          }
+          
+          // Store SDK globally
+          window.__FARCASTER_SDK_INLINE__ = sdk;
+        } else {
+          console.warn('⚠️ [INLINE] sdk.actions.ready not found');
+          console.log('Available:', Object.keys(sdk.actions || {}));
+        }
+      } catch (error) {
+        console.log('ℹ️ [INLINE] Not in Farcaster:', error.message);
       }
     })();
   </script>
@@ -74,7 +103,7 @@
       </div>
     </header>
 
-    <!-- Wallet Info (shown when connected) -->
+    <!-- Wallet Info -->
     <div class="wallet-info" id="walletInfo">
       <div class="wallet-info-header">
         <strong>Connected Wallet</strong>
@@ -87,7 +116,7 @@
       </div>
     </div>
 
-    <!-- Enhanced Stats Section -->
+    <!-- Stats Section -->
     <div class="stats" id="stats">
       <div class="stat-row">
         <span class="stat-label">Network:</span>
@@ -140,7 +169,7 @@
       </div>
     </div>
 
-    <!-- Tip Section (shown when connected) -->
+    <!-- Tip Section -->
     <div id="tipSection">
       <!-- Faucet Section (testnet only) -->
       <div id="faucetSection" class="faucet-section" style="display: none;">
@@ -224,7 +253,10 @@
     </footer>
   </div>
 
-  <!-- Main application script (handles Farcaster SDK internally) -->
+  <!-- 
+    Main application script 
+    This loads AFTER the inline Farcaster SDK initialization
+  -->
   <script type="module" src="/main.js"></script>
 </body>
 </html>
