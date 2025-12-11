@@ -1,6 +1,5 @@
-/* styles.css - Application styles with AppKit button */
+/* Enhanced styles for Farcaster miniapp */
 
-/* Reset and base styles */
 * {
   margin: 0;
   padding: 0;
@@ -8,7 +7,6 @@
 }
 
 :root {
-  /* Color palette */
   --primary: #667eea;
   --primary-dark: #5568d3;
   --secondary: #764ba2;
@@ -17,9 +15,9 @@
   --warning: #f59e0b;
   --info: #3b82f6;
   --faucet: #8b5cf6;
-  --appkit: #3396ff; /* NEW: AppKit brand color */
+  --appkit: #3396ff;
+  --premium: #fbbf24;
   
-  /* Neutral colors */
   --bg-primary: #ffffff;
   --bg-secondary: #f7f7f7;
   --bg-tertiary: #e0e0e0;
@@ -28,7 +26,6 @@
   --text-tertiary: #999999;
   --border: #e0e0e0;
   
-  /* Spacing */
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 12px;
@@ -38,26 +35,22 @@
   --space-3xl: 32px;
   --space-4xl: 40px;
   
-  /* Border radius */
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-xl: 20px;
   --radius-full: 9999px;
   
-  /* Shadows */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
   --shadow-lg: 0 10px 20px rgba(0, 0, 0, 0.15);
   --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.3);
   
-  /* Transitions */
   --transition-fast: 150ms ease;
   --transition-base: 300ms ease;
   --transition-slow: 500ms ease;
 }
 
-/* Body and layout */
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 
     'Roboto', 'Helvetica Neue', Arial, sans-serif;
@@ -77,7 +70,7 @@ body {
   background: var(--bg-primary);
   border-radius: var(--radius-xl);
   padding: var(--space-4xl);
-  max-width: 480px;
+  max-width: 500px;
   width: 100%;
   box-shadow: var(--shadow-xl);
   animation: fadeIn 0.5s ease;
@@ -94,7 +87,6 @@ body {
   }
 }
 
-/* Header */
 .header {
   text-align: center;
   margin-bottom: var(--space-3xl);
@@ -110,8 +102,99 @@ h1 {
 
 .subtitle {
   color: var(--text-secondary);
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 400;
+  margin-bottom: var(--space-md);
+}
+
+/* Builder Badge */
+.builder-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: #78350f;
+  padding: var(--space-xs) var(--space-md);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: var(--space-sm);
+  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
+}
+
+.badge-icon {
+  font-size: 14px;
+}
+
+/* Premium Status */
+.premium-status {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 2px solid var(--premium);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+  margin-top: var(--space-md);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.premium-icon {
+  font-size: 20px;
+}
+
+.premium-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #78350f;
+}
+
+/* Premium Achievement Info */
+.premium-info {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 2px solid var(--premium);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-lg);
+  text-align: center;
+}
+
+.premium-info p {
+  color: #78350f;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: var(--space-sm);
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: rgba(120, 53, 15, 0.2);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  margin-bottom: var(--space-xs);
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--premium) 0%, #f59e0b 100%);
+  border-radius: var(--radius-full);
+  transition: width var(--transition-base);
+}
+
+.progress-text {
+  font-size: 12px;
+  color: #78350f;
+  margin-top: var(--space-xs);
 }
 
 /* Wallet info */
@@ -200,6 +283,56 @@ h1 {
   font-size: 14px;
 }
 
+/* Builder Challenge Info */
+.builder-info {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 2px solid var(--premium);
+  border-radius: var(--radius-md);
+  padding: var(--space-xl);
+  margin-top: var(--space-2xl);
+  margin-bottom: var(--space-2xl);
+}
+
+.builder-info h3 {
+  font-size: 18px;
+  color: #78350f;
+  margin-bottom: var(--space-md);
+}
+
+.builder-info p {
+  color: #78350f;
+  font-size: 13px;
+  margin-bottom: var(--space-sm);
+}
+
+.builder-info ul {
+  list-style: none;
+  padding: 0;
+  margin-bottom: var(--space-lg);
+}
+
+.builder-info ul li {
+  color: #78350f;
+  font-size: 13px;
+  padding: var(--space-xs) 0;
+}
+
+.builder-link {
+  display: inline-block;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  color: white;
+  padding: var(--space-sm) var(--space-lg);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 13px;
+  transition: transform var(--transition-fast);
+}
+
+.builder-link:hover {
+  transform: translateY(-2px);
+}
+
 /* Faucet section */
 .faucet-section {
   background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
@@ -237,11 +370,6 @@ h1 {
 .btn-faucet:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 10px 20px rgba(139, 92, 246, 0.4);
-}
-
-.btn-faucet:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 /* Sections */
@@ -431,39 +559,15 @@ input::placeholder {
   background: var(--bg-tertiary);
 }
 
-/* NEW: AppKit Button Style */
 .btn-appkit {
   background: linear-gradient(135deg, var(--appkit) 0%, #2563eb 100%);
   color: white;
-  width: 100%;
-  margin-bottom: var(--space-lg);
-  border: none;
-  padding: var(--space-lg);
-  border-radius: var(--radius-md);
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all var(--transition-base);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-sm);
   box-shadow: 0 4px 12px rgba(51, 150, 255, 0.3);
 }
 
 .btn-appkit:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 10px 20px rgba(51, 150, 255, 0.5);
-}
-
-.btn-appkit:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.btn-appkit:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none !important;
 }
 
 .btn:disabled {
@@ -537,6 +641,7 @@ input::placeholder {
   align-items: center;
   justify-content: center;
   gap: var(--space-sm);
+  flex-wrap: wrap;
 }
 
 .footer-links a {
@@ -581,44 +686,4 @@ input::placeholder {
 
 .btn:disabled .btn-icon {
   animation: spin 1s linear infinite;
-}
-
-/* Dark mode support (optional) */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg-primary: #1a1a1a;
-    --bg-secondary: #2d2d2d;
-    --bg-tertiary: #404040;
-    --text-primary: #ffffff;
-    --text-secondary: #b3b3b3;
-    --text-tertiary: #808080;
-    --border: #404040;
-  }
-
-  body {
-    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
-  }
-
-  .wallet-info {
-    background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 100%);
-  }
-
-  .wallet-address {
-    color: #93c5fd;
-  }
-
-  .faucet-section {
-    background: linear-gradient(135deg, #2e1065 0%, #4c1d95 100%);
-    border-color: #7c3aed;
-  }
-
-  .faucet-info {
-    color: #c4b5fd;
-  }
-
-  .install-notice {
-    background: #422006;
-    border-color: #78350f;
-    color: #fbbf24;
-  }
 }
