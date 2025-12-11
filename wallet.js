@@ -1,4 +1,4 @@
-// wallet.js - Wallet connection and management (FIXED v2 - Better Auto-Reconnect)
+// wallet.js - Complete wallet management with AppKit support
 import { CONFIG } from './config.js';
 import { uintCV, cvToHex, standardPrincipalCV } from '@stacks/transactions';
 
@@ -10,12 +10,69 @@ export class WalletManager {
     this.isReady = false;
     this.lastFaucetClaim = null;
     this.autoReconnected = false;
+    this.appkit = null;
     
-    // Load saved wallet state immediately
+    // Initialize AppKit
+    this.initAppKit();
+    
+    // Load saved wallet state
     this.loadWalletState();
   }
 
-  // Save wallet state to localStorage
+  // Initialize Reown AppKit
+  async initAppKit() {
+    if (typeof window === 'undefined') return;
+    
+    try {
+      const { createAppKit } = await import('@reown/appkit');
+      const { StacksAdapter } = await import('@reown/appkit-adapter-stacks');
+      
+      const stacksAdapter = new StacksAdapter({
+        network: CONFIG.NETWORK.DEFAULT
+      });
+      
+      this.appkit = createAppKit({
+        adapters: [stacksAdapter],
+        networks: [{
+          id: CONFIG.NETWORK.DEFAULT === 'mainnet' ? 'stacks' : 'stacks-testnet',
+          name: CONFIG.NETWORK.DEFAULT === 'mainnet' ? 'Stacks' : 'Stacks Testnet',
+          nativeCurrency: { name: 'STX', symbol: 'STX', decimals: 6 },
+          rpcUrls: {
+            default: { http: [CONFIG.NETWORK.ENDPOINTS[CONFIG.NETWORK.DEFAULT]] }
+          }
+        }],
+        metadata: {
+          name: CONFIG.APP.NAME,
+          description: CONFIG.APP.DESCRIPTION,
+          url: CONFIG.APP.URL,
+          icons: [CONFIG.APP.ICON]
+        },
+        projectId: '75cff2cd446ad1ae6c9f22c5c9bbcd6d',
+        features: {
+          analytics: true,
+          email: false,
+          socials: []
+        }
+      });
+
+      // Subscribe to AppKit events
+      this.appkit.subscribeEvents((event) => {
+        console.log('🌐 AppKit event:', event);
+        if (event.data?.address) {
+          this.address = event.data.address;
+          this.walletType = 'appkit';
+          this.autoReconnected = false;
+          this.saveWalletState();
+          this.notify();
+        }
+      });
+
+      console.log('✅ AppKit initialized');
+    } catch (error) {
+      console.error('❌ AppKit initialization failed:', error);
+    }
+  }
+
   saveWalletState() {
     if (this.address && this.walletType) {
       const state = {
@@ -28,22 +85,19 @@ export class WalletManager {
     }
   }
 
-  // Load wallet state from localStorage
   loadWalletState() {
     try {
       const saved = localStorage.getItem('stacks_wallet_state');
       if (saved) {
         const state = JSON.parse(saved);
-        
-        // Check if state is less than 24 hours old
         const hoursSince = (Date.now() - state.timestamp) / (1000 * 60 * 60);
+        
         if (hoursSince < 24) {
           this.address = state.address;
           this.walletType = state.walletType;
           this.autoReconnected = true;
           console.log('✅ Restored wallet state:', state);
           
-          // Notify listeners immediately
           setTimeout(() => {
             console.log('🔔 Notifying listeners of auto-reconnect');
             this.notify();
@@ -62,25 +116,22 @@ export class WalletManager {
     return false;
   }
 
-  // Clear wallet state from localStorage
   clearWalletState() {
     localStorage.removeItem('stacks_wallet_state');
     console.log('🗑️ Cleared wallet state');
   }
 
-  // Check if wallet was auto-reconnected
   wasAutoReconnected() {
     return this.autoReconnected;
   }
 
-  // Wait for wallet providers to load (browser only)
   async waitForWallets() {
     let attempts = 0;
     const maxAttempts = 20;
 
     while (attempts < maxAttempts) {
       const availability = this.checkAvailability();
-      if (availability.leather || availability.xverse) {
+      if (availability.leather || availability.xverse || availability.appkit) {
         this.isReady = true;
         console.log('✅ Wallets detected:', availability);
         return;
@@ -93,11 +144,9 @@ export class WalletManager {
     this.isReady = true;
   }
 
-  // Subscribe to wallet state changes
   subscribe(callback) {
     this.listeners.push(callback);
     
-    // Immediately call with current state if connected
     if (this.address) {
       console.log('🔔 Immediate callback for existing connection');
       callback({
@@ -112,7 +161,6 @@ export class WalletManager {
     };
   }
 
-  // Notify all listeners
   notify() {
     console.log('🔔 Notifying', this.listeners.length, 'listeners');
     const state = {
@@ -131,48 +179,40 @@ export class WalletManager {
     });
   }
 
-  // Check if wallets are available (SSR safe)
   checkAvailability() {
     if (typeof window === 'undefined') {
-      return { leather: false, xverse: false };
+      return { leather: false, xverse: false, appkit: false };
     }
 
     return {
-      leather:
-        typeof window.LeatherProvider !== 'undefined' ||
-        typeof window.HiroWalletProvider !== 'undefined',
+      leather: typeof window.LeatherProvider !== 'undefined' || 
+               typeof window.HiroWalletProvider !== 'undefined',
       xverse: typeof window.XverseProviders !== 'undefined',
+      appkit: this.appkit !== null
     };
   }
 
-  // Encode Clarity uint as hex for stx_callContract
   encodeClarityUint(microAmount) {
     const cv = uintCV(microAmount);
     return cvToHex(cv);
   }
 
-  // Encode principal as hex
   encodePrincipal(address) {
     const cv = standardPrincipalCV(address);
     return cvToHex(cv);
   }
 
-  // Extract txId from various response shapes
   extractTxId(response) {
     if (!response) return null;
-
     if (response.txid || response.txId) {
       return response.txid || response.txId;
     }
-
     if (response.result && (response.result.txid || response.result.txId)) {
       return response.result.txid || response.result.txId;
     }
-
     return null;
   }
 
-  // Connect Leather wallet
   async connectLeather() {
     console.log('🔌 Attempting Leather connection...');
 
@@ -183,7 +223,7 @@ export class WalletManager {
     const provider = window.LeatherProvider || window.HiroWalletProvider;
 
     if (!provider) {
-      throw new Error('Leather wallet not installed. Please install from leather.io');
+      throw new Error('Leather wallet not installed. Install from leather.io');
     }
 
     try {
@@ -219,7 +259,6 @@ export class WalletManager {
       this.autoReconnected = false;
       console.log('✅ Connected:', this.address);
       
-      // Save wallet state
       this.saveWalletState();
       this.notify();
 
@@ -234,7 +273,6 @@ export class WalletManager {
     }
   }
 
-  // Connect Xverse wallet
   async connectXverse() {
     console.log('🔌 Attempting Xverse connection...');
 
@@ -243,7 +281,7 @@ export class WalletManager {
     }
 
     if (typeof window.XverseProviders === 'undefined') {
-      throw new Error('Xverse wallet not installed. Please install from xverse.app');
+      throw new Error('Xverse wallet not installed. Install from xverse.app');
     }
 
     try {
@@ -270,7 +308,6 @@ export class WalletManager {
       this.autoReconnected = false;
       console.log('✅ Connected:', this.address);
       
-      // Save wallet state
       this.saveWalletState();
       this.notify();
 
@@ -285,9 +322,47 @@ export class WalletManager {
     }
   }
 
-  // Disconnect wallet
+  async connectAppKit() {
+    console.log('🌐 Attempting AppKit connection...');
+
+    if (!this.appkit) {
+      throw new Error('AppKit not initialized');
+    }
+
+    try {
+      await this.appkit.open();
+      
+      // Wait for connection with timeout
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Connection timeout'));
+        }, 30000); // 30 second timeout
+
+        const checkConnection = setInterval(() => {
+          if (this.address && this.walletType === 'appkit') {
+            clearTimeout(timeout);
+            clearInterval(checkConnection);
+            resolve({
+              success: true,
+              address: this.address,
+              walletType: this.walletType,
+            });
+          }
+        }, 500);
+      });
+    } catch (error) {
+      console.error('❌ AppKit connection error:', error);
+      throw error;
+    }
+  }
+
   disconnect() {
     console.log('🔌 Disconnecting wallet...');
+    
+    if (this.walletType === 'appkit' && this.appkit) {
+      this.appkit.disconnect();
+    }
+    
     this.address = null;
     this.walletType = null;
     this.autoReconnected = false;
@@ -295,7 +370,6 @@ export class WalletManager {
     this.notify();
   }
 
-  // Get current state
   getState() {
     return {
       address: this.address,
@@ -333,7 +407,7 @@ export class WalletManager {
 
       if (!response.ok) {
         if (response.status === 429) {
-          throw new Error('Faucet rate limit reached. Please try again later.');
+          throw new Error('Faucet rate limit reached. Try again later.');
         }
         
         let errorText = '';
@@ -345,7 +419,7 @@ export class WalletManager {
         }
         
         if (response.status === 500) {
-          throw new Error('Faucet service temporarily unavailable. Try using the Hiro Explorer faucet directly.');
+          throw new Error('Faucet service temporarily unavailable.');
         }
         
         throw new Error(`Faucet request failed: ${errorText || response.statusText}`);
@@ -355,7 +429,6 @@ export class WalletManager {
       console.log('✅ Faucet response:', data);
 
       this.lastFaucetClaim = Date.now();
-
       const txId = data.txId || data.txid;
 
       return {
@@ -408,6 +481,8 @@ export class WalletManager {
         return await this.sendTipLeather(microAmount);
       } else if (this.walletType === 'xverse') {
         return await this.sendTipXverse(microAmount);
+      } else if (this.walletType === 'appkit') {
+        return await this.sendTipAppKit(microAmount);
       } else {
         throw new Error('Unknown wallet type: ' + this.walletType);
       }
@@ -434,10 +509,6 @@ export class WalletManager {
       const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
       const argHex = this.encodeClarityUint(microAmount);
 
-      console.log('📝 Contract:', contractId);
-      console.log('🔢 Amount (micro):', microAmount);
-      console.log('🔐 Hex-encoded argument:', argHex);
-
       const params = {
         contract: contractId,
         functionName: 'send-tip',
@@ -446,23 +517,19 @@ export class WalletManager {
         network: CONFIG.NETWORK.DEFAULT,
       };
 
-      console.log('📤 Calling stx_callContract with params:', params);
+      console.log('📤 Calling stx_callContract:', params);
 
       const response = await provider.request('stx_callContract', params);
       console.log('✅ Transaction response:', response);
 
       if (response.error) {
-        const errorMsg =
-          response.error.message ||
-          response.error.toString() ||
-          'Transaction failed';
-        throw new Error(errorMsg);
+        throw new Error(response.error.message || 'Transaction failed');
       }
 
       const txid = this.extractTxId(response);
 
       if (!txid) {
-        throw new Error('No transaction ID returned from Leather');
+        throw new Error('No transaction ID returned');
       }
 
       return {
@@ -472,20 +539,7 @@ export class WalletManager {
       };
     } catch (error) {
       console.error('❌ Leather transaction failed:', error);
-
-      let errorMessage = 'Transaction failed';
-
-      if (error.message) {
-        errorMessage = error.message;
-      } else if (error.error && error.error.message) {
-        errorMessage = error.error.message;
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      } else if (error.toString && error.toString() !== '[object Object]') {
-        errorMessage = error.toString();
-      }
-
-      throw new Error(errorMessage);
+      throw new Error(error.message || 'Transaction failed');
     }
   }
 
@@ -505,10 +559,6 @@ export class WalletManager {
       const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
       const argHex = this.encodeClarityUint(microAmount);
 
-      console.log('📝 Contract:', contractId);
-      console.log('🔢 Amount (micro):', microAmount);
-      console.log('🔐 Hex-encoded argument:', argHex);
-
       const params = {
         contract: contractId,
         functionName: 'send-tip',
@@ -517,23 +567,19 @@ export class WalletManager {
         network: CONFIG.NETWORK.DEFAULT,
       };
 
-      console.log('📤 Calling stx_callContract with params:', params);
+      console.log('📤 Calling stx_callContract:', params);
 
       const response = await stacksProvider.request('stx_callContract', params);
       console.log('✅ Transaction response:', response);
 
       if (response.error) {
-        const errorMsg =
-          response.error.message ||
-          response.error.toString() ||
-          'Transaction failed';
-        throw new Error(errorMsg);
+        throw new Error(response.error.message || 'Transaction failed');
       }
 
       const txid = this.extractTxId(response);
 
       if (!txid) {
-        throw new Error('No transaction ID returned from Xverse');
+        throw new Error('No transaction ID returned');
       }
 
       return {
@@ -543,20 +589,46 @@ export class WalletManager {
       };
     } catch (error) {
       console.error('❌ Xverse transaction failed:', error);
+      throw new Error(error.message || 'Transaction failed');
+    }
+  }
 
-      let errorMessage = 'Transaction failed';
+  async sendTipAppKit(microAmount) {
+    console.log('🌐 Sending via AppKit...');
 
-      if (error.message) {
-        errorMessage = error.message;
-      } else if (error.error && error.error.message) {
-        errorMessage = error.error.message;
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      } else if (error.toString && error.toString() !== '[object Object]') {
-        errorMessage = error.toString();
+    if (!this.appkit) {
+      throw new Error('AppKit not initialized');
+    }
+
+    try {
+      const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
+      const argHex = this.encodeClarityUint(microAmount);
+
+      const params = {
+        contract: contractId,
+        functionName: 'send-tip',
+        functionArgs: [argHex],
+        postConditionMode: 'allow',
+        network: CONFIG.NETWORK.DEFAULT,
+      };
+
+      const response = await this.appkit.writeContract(params);
+      console.log('✅ AppKit response:', response);
+
+      const txid = this.extractTxId(response);
+
+      if (!txid) {
+        throw new Error('No transaction ID returned');
       }
 
-      throw new Error(errorMessage);
+      return {
+        success: true,
+        txId: txid,
+        walletType: 'appkit',
+      };
+    } catch (error) {
+      console.error('❌ AppKit transaction failed:', error);
+      throw new Error(error.message || 'Transaction failed');
     }
   }
 
@@ -576,6 +648,8 @@ export class WalletManager {
         return await this.withdrawLeather(this.address);
       } else if (this.walletType === 'xverse') {
         return await this.withdrawXverse(this.address);
+      } else if (this.walletType === 'appkit') {
+        return await this.withdrawAppKit(this.address);
       } else {
         throw new Error('Unknown wallet type: ' + this.walletType);
       }
@@ -586,146 +660,72 @@ export class WalletManager {
   }
 
   async withdrawLeather(recipient) {
-    console.log('🦊 Withdraw via Leather...');
-
-    if (typeof window === 'undefined') {
-      throw new Error('Wallets are only available in the browser');
-    }
-
     const provider = window.LeatherProvider || window.HiroWalletProvider;
+    if (!provider) throw new Error('Leather provider not found');
 
-    if (!provider) {
-      throw new Error('Leather provider not found');
-    }
+    const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
+    const argHex = this.encodePrincipal(recipient);
 
-    try {
-      const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
-      const argHex = this.encodePrincipal(recipient);
+    const params = {
+      contract: contractId,
+      functionName: 'withdraw',
+      functionArgs: [argHex],
+      postConditionMode: 'allow',
+      network: CONFIG.NETWORK.DEFAULT,
+    };
 
-      console.log('📝 Contract:', contractId);
-      console.log('👤 Recipient principal:', recipient);
-      console.log('🔐 Hex-encoded principal:', argHex);
+    const response = await provider.request('stx_callContract', params);
+    if (response.error) throw new Error(response.error.message);
 
-      const params = {
-        contract: contractId,
-        functionName: 'withdraw',
-        functionArgs: [argHex],
-        postConditionMode: 'allow',
-        network: CONFIG.NETWORK.DEFAULT,
-      };
+    const txid = this.extractTxId(response);
+    if (!txid) throw new Error('No transaction ID returned');
 
-      console.log('📤 Calling stx_callContract (withdraw) with params:', params);
-
-      const response = await provider.request('stx_callContract', params);
-      console.log('✅ Withdraw transaction response:', response);
-
-      if (response.error) {
-        const errorMsg =
-          response.error.message ||
-          response.error.toString() ||
-          'Withdraw transaction failed';
-        throw new Error(errorMsg);
-      }
-
-      const txid = this.extractTxId(response);
-
-      if (!txid) {
-        throw new Error('No transaction ID returned from Leather (withdraw)');
-      }
-
-      return {
-        success: true,
-        txId: txid,
-        walletType: 'leather',
-      };
-    } catch (error) {
-      console.error('❌ Leather withdraw transaction failed:', error);
-
-      let errorMessage = 'Withdraw transaction failed';
-
-      if (error.message) {
-        errorMessage = error.message;
-      } else if (error.error && error.error.message) {
-        errorMessage = error.error.message;
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      } else if (error.toString && error.toString() !== '[object Object]') {
-        errorMessage = error.toString();
-      }
-
-      throw new Error(errorMessage);
-    }
+    return { success: true, txId: txid, walletType: 'leather' };
   }
 
   async withdrawXverse(recipient) {
-    console.log('⚡ Withdraw via Xverse...');
+    if (!window.XverseProviders) throw new Error('Xverse provider not found');
 
-    if (typeof window === 'undefined') {
-      throw new Error('Wallets are only available in the browser');
-    }
+    const stacksProvider = window.XverseProviders.StacksProvider;
+    const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
+    const argHex = this.encodePrincipal(recipient);
 
-    if (!window.XverseProviders) {
-      throw new Error('Xverse provider not found');
-    }
+    const params = {
+      contract: contractId,
+      functionName: 'withdraw',
+      functionArgs: [argHex],
+      postConditionMode: 'allow',
+      network: CONFIG.NETWORK.DEFAULT,
+    };
 
-    try {
-      const stacksProvider = window.XverseProviders.StacksProvider;
-      const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
-      const argHex = this.encodePrincipal(recipient);
+    const response = await stacksProvider.request('stx_callContract', params);
+    if (response.error) throw new Error(response.error.message);
 
-      console.log('📝 Contract:', contractId);
-      console.log('👤 Recipient principal:', recipient);
-      console.log('🔐 Hex-encoded principal:', argHex);
+    const txid = this.extractTxId(response);
+    if (!txid) throw new Error('No transaction ID returned');
 
-      const params = {
-        contract: contractId,
-        functionName: 'withdraw',
-        functionArgs: [argHex],
-        postConditionMode: 'allow',
-        network: CONFIG.NETWORK.DEFAULT,
-      };
+    return { success: true, txId: txid, walletType: 'xverse' };
+  }
 
-      console.log('📤 Calling stx_callContract (withdraw) with params:', params);
+  async withdrawAppKit(recipient) {
+    if (!this.appkit) throw new Error('AppKit not initialized');
 
-      const response = await stacksProvider.request('stx_callContract', params);
-      console.log('✅ Withdraw transaction response:', response);
+    const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
+    const argHex = this.encodePrincipal(recipient);
 
-      if (response.error) {
-        const errorMsg =
-          response.error.message ||
-          response.error.toString() ||
-          'Withdraw transaction failed';
-        throw new Error(errorMsg);
-      }
+    const params = {
+      contract: contractId,
+      functionName: 'withdraw',
+      functionArgs: [argHex],
+      postConditionMode: 'allow',
+      network: CONFIG.NETWORK.DEFAULT,
+    };
 
-      const txid = this.extractTxId(response);
+    const response = await this.appkit.writeContract(params);
+    const txid = this.extractTxId(response);
+    if (!txid) throw new Error('No transaction ID returned');
 
-      if (!txid) {
-        throw new Error('No transaction ID returned from Xverse (withdraw)');
-      }
-
-      return {
-        success: true,
-        txId: txid,
-        walletType: 'xverse',
-      };
-    } catch (error) {
-      console.error('❌ Xverse withdraw transaction failed:', error);
-
-      let errorMessage = 'Withdraw transaction failed';
-
-      if (error.message) {
-        errorMessage = error.message;
-      } else if (error.error && error.error.message) {
-        errorMessage = error.error.message;
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      } else if (error.toString && error.toString() !== '[object Object]') {
-        errorMessage = error.toString();
-      }
-
-      throw new Error(errorMessage);
-    }
+    return { success: true, txId: txid, walletType: 'appkit' };
   }
 }
 
