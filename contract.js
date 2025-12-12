@@ -1,4 +1,4 @@
-// contract.js - Enhanced for Clarity 4 features
+// contract.js - Enhanced with transaction history support
 
 import { CONFIG, getNetworkEndpoint, microToStx } from './config.js';
 
@@ -12,6 +12,8 @@ export class ContractManager {
       owner: null,
       userStats: null,
       lastUpdate: null,
+      history: null,
+      userHistory: null
     };
     this.cacheTimeout = 5000;
   }
@@ -31,6 +33,8 @@ export class ContractManager {
       owner: null,
       userStats: null,
       lastUpdate: null,
+      history: null,
+      userHistory: null
     };
   }
 
@@ -134,6 +138,110 @@ export class ContractManager {
     }
   }
 
+  // NEW: Fetch transaction history
+  async fetchTransactionHistory(network = CONFIG.NETWORK.DEFAULT, limit = 10) {
+    console.log('📜 Fetching transaction history...');
+    
+    try {
+      // Get total transaction count first
+      const totalResult = await this.callReadOnly('get-total-transactions', [], network);
+      const total = this.extractValue(totalResult, 'uint');
+      
+      if (total === 0) {
+        return [];
+      }
+      
+      // Fetch the last N transactions
+      const start = Math.max(1, total - limit + 1);
+      const transactions = [];
+      
+      for (let i = total; i >= start && i > 0; i--) {
+        try {
+          const txResult = await this.callReadOnly(
+            'get-transaction', 
+            [this.encodeClarityUint(i)], 
+            network
+          );
+          
+          const tx = this.extractTransaction(txResult, i);
+          if (tx) {
+            transactions.push(tx);
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch transaction ${i}:`, error);
+        }
+      }
+      
+      console.log('✅ Fetched', transactions.length, 'transactions');
+      this.cache.history = transactions;
+      return transactions;
+    } catch (error) {
+      console.error('❌ Failed to fetch transaction history:', error);
+      return [];
+    }
+  }
+
+  // NEW: Fetch user's transaction history
+  async fetchUserHistory(userAddress, network = CONFIG.NETWORK.DEFAULT) {
+    console.log('👤 Fetching user history for:', userAddress);
+    
+    try {
+      const result = await this.callReadOnly(
+        'get-user-transactions',
+        [this.encodePrincipal(userAddress)],
+        network
+      );
+      
+      const userHistory = this.extractUserHistory(result);
+      console.log('✅ User history:', userHistory);
+      
+      this.cache.userHistory = userHistory;
+      return userHistory;
+    } catch (error) {
+      console.error('❌ Failed to fetch user history:', error);
+      return null;
+    }
+  }
+
+  // NEW: Fetch a specific transaction
+  async fetchTransaction(txId, network = CONFIG.NETWORK.DEFAULT) {
+    try {
+      const result = await this.callReadOnly(
+        'get-transaction',
+        [this.encodeClarityUint(txId)],
+        network
+      );
+      
+      return this.extractTransaction(result, txId);
+    } catch (error) {
+      console.error(`❌ Failed to fetch transaction ${txId}:`, error);
+      return null;
+    }
+  }
+
+  // NEW: Fetch message for a transaction
+  async fetchTipMessage(tipper, tipId, network = CONFIG.NETWORK.DEFAULT) {
+    try {
+      const result = await this.callReadOnly(
+        'get-tip-message',
+        [this.encodePrincipal(tipper), this.encodeClarityUint(tipId)],
+        network
+      );
+      
+      if (result && result.result) {
+        const messageData = result.result;
+        if (messageData && typeof messageData === 'object' && messageData.message) {
+          return messageData.message;
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('❌ Failed to fetch tip message:', error);
+      return null;
+    }
+  }
+
   async callReadOnly(functionName, functionArgs = [], network = CONFIG.NETWORK.DEFAULT) {
     const endpoint = getNetworkEndpoint(network);
     const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
@@ -172,8 +280,12 @@ export class ContractManager {
 
   // Encode principal for contract calls
   encodePrincipal(address) {
-    // Simple hex encoding - in production, use proper Clarity encoding
     return `0x${Buffer.from(address).toString('hex')}`;
+  }
+
+  encodeClarityUint(value) {
+    const hex = value.toString(16).padStart(32, '0');
+    return `0x0100000000000000000000000000000000${hex}`;
   }
 
   decodeClarityHex(hexString, expectedType) {
@@ -217,7 +329,6 @@ export class ContractManager {
     }
 
     if (expectedType === 'bool') {
-      // 0x07 (ok) + 03 (true) or 04 (false)
       if (hex.startsWith('0703')) return true;
       if (hex.startsWith('0704')) return false;
       return false;
@@ -316,7 +427,6 @@ export class ContractManager {
   extractUserStats(response) {
     const result = response.result || response;
     
-    // Handle tuple format
     if (typeof result === 'object' && result !== null) {
       return {
         totalTipped: microToStx(this.extractValue(result['total-tipped'] || result.totalTipped || 0, 'uint')),
@@ -332,6 +442,44 @@ export class ContractManager {
       lastTipBlock: 0,
       isPremium: false
     };
+  }
+
+  // NEW: Extract transaction from response
+  extractTransaction(response, txId) {
+    const result = response.result || response;
+    
+    if (!result || result === 'none') {
+      return null;
+    }
+    
+    if (typeof result === 'object' && result !== null) {
+      return {
+        txId: txId,
+        tipper: this.extractValue(result.tipper, 'principal'),
+        amount: microToStx(this.extractValue(result.amount, 'uint')),
+        blockHeight: this.extractValue(result['block-height'] || result.blockHeight, 'uint'),
+        timestamp: this.extractValue(result.timestamp, 'uint'),
+        hasMessage: this.extractValue(result['has-message'] || result.hasMessage, 'bool')
+      };
+    }
+    
+    return null;
+  }
+
+  // NEW: Extract user history
+  extractUserHistory(response) {
+    const result = response.result || response;
+    
+    if (typeof result === 'object' && result !== null) {
+      return {
+        user: this.extractValue(result.user, 'principal'),
+        tipCount: this.extractValue(result['tip-count'] || result.tipCount, 'uint'),
+        totalTipped: microToStx(this.extractValue(result['total-tipped'] || result.totalTipped, 'uint')),
+        lastTipHeight: this.extractValue(result['last-tip-height'] || result.lastTipHeight, 'uint')
+      };
+    }
+    
+    return null;
   }
 
   async getBalance(network = CONFIG.NETWORK.DEFAULT, forceRefresh = false) {
@@ -354,6 +502,16 @@ export class ContractManager {
   async getUserStats(userAddress, network = CONFIG.NETWORK.DEFAULT) {
     const data = await this.fetchContractData(network, userAddress);
     return data.userStats;
+  }
+
+  // NEW: Get transaction history
+  async getHistory(limit = 10, network = CONFIG.NETWORK.DEFAULT) {
+    return await this.fetchTransactionHistory(network, limit);
+  }
+
+  // NEW: Get user history
+  async getUserHistory(userAddress, network = CONFIG.NETWORK.DEFAULT) {
+    return await this.fetchUserHistory(userAddress, network);
   }
 }
 
