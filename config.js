@@ -1,10 +1,10 @@
-// config.js - Configuration
+// config.js - Configuration for Clarity 4 Enhanced Contract
 export const CONFIG = {
-  // Contract configuration
+  // Contract configuration - UPDATE THIS WITH YOUR NEW CONTRACT ADDRESS
   CONTRACT: {
-    ADDRESS: 'ST3ZQXJPR493FCYNAVFX1YSK7EMT6JF909E3SDNQG',
-    NAME: 'tip-jar-v2',
-    OWNER: 'ST3ZQXJPR493FCYNAVFX1YSK7EMT6JF909E3SDNQG'
+    ADDRESS: 'ST3ZQXJPR493FCYNAVFX1YSK7EMT6JF909E3SDNQG', // ⚠️ UPDATE WITH YOUR ADDRESS
+    NAME: 'yearning-harlequin-chimpanzee', // ⚠️ UPDATE WITH YOUR CONTRACT NAME
+    OWNER: 'ST3ZQXJPR493FCYNAVFX1YSK7EMT6JF909E3SDNQG' // ⚠️ UPDATE WITH YOUR ADDRESS
   },
 
   // Network configuration
@@ -26,8 +26,8 @@ export const CONFIG = {
 
   // App metadata
   APP: {
-    NAME: 'Stacks Tip Jar',
-    DESCRIPTION: 'Send STX tips on Bitcoin L2 - Built with Clarity 4',
+    NAME: 'Stacks Tip Jar - Clarity 4 Enhanced',
+    DESCRIPTION: 'Send STX tips with memos on Bitcoin L2 - Built with Clarity 4',
     ICON: '/icon.png',
     URL: typeof window !== 'undefined' ? window.location.origin : 'https://stacks-chi.vercel.app'
   },
@@ -42,7 +42,11 @@ export const CONFIG = {
   UI: {
     QUICK_AMOUNTS: [0.1, 0.5, 1, 5],
     MIN_TIP: 0.000001,
-    DECIMALS: 6
+    DECIMALS: 6,
+    // NEW: Show Clarity 4 features
+    SHOW_MEMO_SUPPORT: true,
+    SHOW_MESSAGE_SUPPORT: true,
+    SHOW_CONSENSUS_HASH: true
   }
 };
 
@@ -99,4 +103,31 @@ export function shortAddress(address, start = 6, end = 4) {
 // Check if faucet should be available
 export function isFaucetAvailable() {
   return CONFIG.FAUCET.ENABLED && CONFIG.NETWORK.DEFAULT === 'testnet';
+}
+
+// NEW: Decode memo from hex (Clarity 4 feature)
+export function decodeMemo(hexMemo) {
+  if (!hexMemo || !hexMemo.startsWith('0x')) return '';
+  
+  try {
+    const hex = hexMemo.slice(2);
+    let str = '';
+    for (let i = 0; i < hex.length; i += 2) {
+      const byte = parseInt(hex.substr(i, 2), 16);
+      if (byte !== 0) str += String.fromCharCode(byte);
+    }
+    return str.trim();
+  } catch (e) {
+    return '';
+  }
+}
+
+// NEW: Check if contract supports Clarity 4 features
+export function getClarity4Features() {
+  return {
+    memoSupport: CONFIG.UI.SHOW_MEMO_SUPPORT,
+    messageSupport: CONFIG.UI.SHOW_MESSAGE_SUPPORT,
+    consensusHash: CONFIG.UI.SHOW_CONSENSUS_HASH,
+    stxAccount: true
+  };
 }
