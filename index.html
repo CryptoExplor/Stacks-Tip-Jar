@@ -122,6 +122,7 @@
           <span class="feature-tag">📝 On-chain Memos</span>
           <span class="feature-tag">💬 Custom Messages</span>
           <span class="feature-tag">🔐 Consensus Hashing</span>
+          <span class="feature-tag">📜 Transaction History</span>
         </div>
       </div>
 
@@ -147,7 +148,7 @@
         />
       </div>
 
-      <!-- NEW: Message Input (Clarity 4 feature) -->
+      <!-- Message Input -->
       <div class="input-group">
         <label for="message" class="section-label">
           💬 Add Message (Optional - Clarity 4)
@@ -176,6 +177,24 @@
           <div class="progress-fill" id="premiumProgress"></div>
         </div>
         <p class="progress-text" id="premiumProgressText">0 / 10 STX</p>
+      </div>
+
+      <!-- Transaction History Section -->
+      <div class="history-section" id="historySection">
+        <div class="section-header">
+          <h3>📜 Recent Tips</h3>
+          <button class="btn-icon-only" id="refreshHistoryBtn" title="Refresh history">
+            🔄
+          </button>
+        </div>
+        
+        <div class="history-list" id="historyList">
+          <div class="history-loading">Loading transaction history...</div>
+        </div>
+        
+        <button class="btn btn-secondary" id="loadMoreBtn" style="display: none;">
+          Load More
+        </button>
       </div>
 
       <!-- Owner-only Withdraw Button -->
