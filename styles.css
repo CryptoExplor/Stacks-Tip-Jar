@@ -1,4 +1,4 @@
-/* Styles for Stacks Tip Jar */
+/* Styles for Stacks Tip Jar - Clarity 4 Enhanced */
 
 * {
   margin: 0;
@@ -10,6 +10,7 @@
   --primary: #667eea;
   --primary-dark: #5568d3;
   --secondary: #764ba2;
+  --clarity4: #ec4899;
   --success: #10b981;
   --error: #ef4444;
   --warning: #f59e0b;
@@ -105,6 +106,31 @@ body {
   object-fit: contain;
 }
 
+/* NEW: Clarity 4 Badge */
+.clarity4-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, var(--clarity4), #db2777);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.05);
+  }
+}
+
 h1 {
   font-size: 32px;
   margin: 0;
@@ -118,6 +144,41 @@ h1 {
   font-size: 14px;
   font-weight: 400;
   margin-bottom: var(--space-md);
+}
+
+/* NEW: Clarity 4 Features Section */
+.clarity4-features {
+  background: linear-gradient(135deg, #fdf2f8 0%, #fce7f3 100%);
+  border: 2px solid var(--clarity4);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-2xl);
+  text-align: center;
+}
+
+.clarity4-features h3 {
+  color: #831843;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: var(--space-sm);
+}
+
+.feature-tags {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.feature-tag {
+  display: inline-block;
+  background: white;
+  border: 1px solid var(--clarity4);
+  color: #831843;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
 }
 
 /* Premium Status */
@@ -323,6 +384,22 @@ h1 {
   font-weight: 500;
   color: var(--text-primary);
   font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+/* NEW: Feature badge in labels */
+.feature-new {
+  display: inline-block;
+  background: var(--clarity4);
+  color: white;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 #connectSection,
@@ -436,7 +513,7 @@ h1 {
 }
 
 /* Input fields */
-input {
+input, textarea {
   width: 100%;
   padding: var(--space-lg);
   border: 2px solid var(--border);
@@ -448,14 +525,33 @@ input {
   color: var(--text-primary);
 }
 
-input:focus {
+textarea {
+  resize: vertical;
+  min-height: 80px;
+  line-height: 1.5;
+}
+
+input:focus, textarea:focus {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
-input::placeholder {
+input::placeholder, textarea::placeholder {
   color: var(--text-tertiary);
+}
+
+/* NEW: Character counter */
+.char-count {
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: var(--space-xs);
+}
+
+.char-count span {
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 /* Buttons */
@@ -485,9 +581,18 @@ input::placeholder {
   color: white;
 }
 
+/* NEW: Special styling when message is added */
+.btn-primary.has-message {
+  background: linear-gradient(135deg, var(--clarity4) 0%, #db2777 100%);
+}
+
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+}
+
+.btn-primary.has-message:hover:not(:disabled) {
+  box-shadow: 0 10px 20px rgba(236, 72, 153, 0.4);
 }
 
 .btn-primary:active:not(:disabled) {
@@ -607,6 +712,10 @@ input::placeholder {
 
   .wallet-buttons {
     grid-template-columns: 1fr;
+  }
+  
+  .feature-tags {
+    flex-direction: column;
   }
 }
 
