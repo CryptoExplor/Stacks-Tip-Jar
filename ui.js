@@ -1,4 +1,4 @@
-// ui.js - UI controller with AppKit wallet button
+// ui.js - UI controller
 import { CONFIG, formatStx, isFaucetAvailable } from './config.js';
 import { walletManager } from './wallet.js';
 import { contractManager } from './contract.js';
@@ -42,7 +42,6 @@ export class UIController {
       // Wallet connection
       leatherBtn: document.getElementById('leatherBtn'),
       xverseBtn: document.getElementById('xverseBtn'),
-      appkitBtn: document.getElementById('appkitBtn'), // NEW
       disconnectBtn: document.getElementById('disconnectBtn'),
       connectSection: document.getElementById('connectSection'),
       tipSection: document.getElementById('tipSection'),
@@ -78,7 +77,6 @@ export class UIController {
     // Wallet connection buttons
     this.elements.leatherBtn?.addEventListener('click', () => this.connectLeather());
     this.elements.xverseBtn?.addEventListener('click', () => this.connectXverse());
-    this.elements.appkitBtn?.addEventListener('click', () => this.connectAppKit()); // NEW
     this.elements.disconnectBtn?.addEventListener('click', () => this.disconnect());
 
     // Tip sending
@@ -123,7 +121,7 @@ export class UIController {
     const availability = walletManager.checkAvailability();
     console.log('📋 Availability:', availability);
 
-    if (!availability.leather && !availability.xverse && !availability.appkit) {
+    if (!availability.leather && !availability.xverse) {
       this.elements.installNotice?.classList.add('show');
       console.log('⚠️ No wallets detected - showing install notice');
     }
@@ -137,17 +135,6 @@ export class UIController {
     if (!availability.xverse && this.elements.xverseBtn) {
       this.elements.xverseBtn.disabled = true;
       this.elements.xverseBtn.title = 'Xverse wallet not installed';
-    }
-
-    // AppKit should always be available after initialization
-    if (!availability.appkit && this.elements.appkitBtn) {
-      this.elements.appkitBtn.disabled = true;
-      this.elements.appkitBtn.title = 'AppKit initializing...';
-      // Re-check in 2 seconds
-      setTimeout(() => this.checkWalletAvailability(), 2000);
-    } else if (this.elements.appkitBtn) {
-      this.elements.appkitBtn.disabled = false;
-      this.elements.appkitBtn.title = 'Connect via Reown AppKit';
     }
   }
 
@@ -257,32 +244,6 @@ export class UIController {
         error.message || 'Failed to connect to Xverse wallet',
         'error',
       );
-    } finally {
-      this.setLoading(false);
-    }
-  }
-
-  // NEW: Connect via Reown AppKit
-  async connectAppKit() {
-    console.log('🌐 Connect AppKit clicked');
-    this.setLoading(true);
-    this.showStatus('Opening wallet selection...', 'info');
-
-    try {
-      await walletManager.connectAppKit();
-      this.showStatus(`Connected with AppKit!`, 'success');
-    } catch (error) {
-      console.error('❌ AppKit connection failed:', error);
-      
-      // Don't show error if user just closed the modal
-      if (error.message && !error.message.includes('timeout')) {
-        this.showStatus(
-          error.message || 'Failed to connect wallet',
-          'error',
-        );
-      } else {
-        this.showStatus('Connection cancelled', 'info');
-      }
     } finally {
       this.setLoading(false);
     }
@@ -534,7 +495,6 @@ export class UIController {
     const buttons = [
       this.elements.leatherBtn,
       this.elements.xverseBtn,
-      this.elements.appkitBtn,
       this.elements.sendTipBtn,
       this.elements.refreshBtn,
       this.elements.withdrawBtn,
