@@ -1,5 +1,5 @@
-// ui.js - UI controller
-import { CONFIG, formatStx, isFaucetAvailable } from './config.js';
+// ui.js - UI controller with Clarity 4 message support
+import { CONFIG, formatStx, isFaucetAvailable, getClarity4Features } from './config.js';
 import { walletManager } from './wallet.js';
 import { contractManager } from './contract.js';
 
@@ -10,12 +10,13 @@ export class UIController {
       loading: false,
       connected: false,
       stats: null,
+      hasMessage: false
     };
     this.faucetTimer = null;
   }
 
   async init() {
-    console.log('🚀 Initializing UI...');
+    console.log('🚀 Initializing UI with Clarity 4 features...');
     this.cacheElements();
     this.attachEventListeners();
     this.subscribeToWallet();
@@ -25,6 +26,7 @@ export class UIController {
     await this.loadInitialData();
     
     this.updateFaucetVisibility();
+    this.showClarity4Features();
     
     console.log('✅ UI initialized');
   }
@@ -52,13 +54,18 @@ export class UIController {
 
       // Tip sending
       amountInput: document.getElementById('amount'),
+      messageInput: document.getElementById('message'),
+      charCount: document.getElementById('charCount'),
       sendTipBtn: document.getElementById('sendTipBtn'),
+      sendTipBtnText: document.getElementById('sendTipBtnText'),
       quickAmounts: document.querySelectorAll('.quick-amount'),
 
       // Stats
       networkDisplay: document.getElementById('networkDisplay'),
       contractBalance: document.getElementById('contractBalance'),
       totalTips: document.getElementById('totalTips'),
+      totalTippers: document.getElementById('totalTippers'),
+      totalTransactions: document.getElementById('totalTransactions'),
       refreshBtn: document.getElementById('refreshBtn'),
 
       // Owner-only withdraw
@@ -97,6 +104,18 @@ export class UIController {
           this.elements.amountInput.value = amount;
         }
       });
+    });
+
+    // NEW: Message character counter
+    this.elements.messageInput?.addEventListener('input', e => {
+      const length = e.target.value.length;
+      if (this.elements.charCount) {
+        this.elements.charCount.textContent = length;
+      }
+      
+      // Update button text based on whether there's a message
+      this.state.hasMessage = length > 0;
+      this.updateSendButton();
     });
 
     // Enter key on amount input
@@ -146,6 +165,23 @@ export class UIController {
       const network = CONFIG.NETWORK.DEFAULT;
       this.elements.networkDisplay.textContent =
         network.charAt(0).toUpperCase() + network.slice(1);
+    }
+  }
+
+  showClarity4Features() {
+    const features = getClarity4Features();
+    console.log('✨ Clarity 4 features available:', features);
+  }
+
+  updateSendButton() {
+    if (!this.elements.sendTipBtnText) return;
+    
+    if (this.state.hasMessage) {
+      this.elements.sendTipBtnText.textContent = 'Send Tip with Message';
+      this.elements.sendTipBtn.classList.add('has-message');
+    } else {
+      this.elements.sendTipBtnText.textContent = 'Send Tip';
+      this.elements.sendTipBtn.classList.remove('has-message');
     }
   }
 
@@ -341,6 +377,7 @@ export class UIController {
     console.log('💸 Send tip clicked');
 
     const amount = parseFloat(this.elements.amountInput?.value || 0);
+    const message = this.elements.messageInput?.value?.trim() || '';
 
     if (!amount || amount <= 0) {
       this.showStatus('Please enter a valid tip amount', 'error');
@@ -358,24 +395,44 @@ export class UIController {
     }
 
     this.setLoading(true);
-    this.showStatus('Preparing transaction...', 'info');
+
+    // Show different status based on whether message is included
+    if (message) {
+      this.showStatus('Preparing transaction with custom message (Clarity 4)...', 'info');
+    } else {
+      this.showStatus('Preparing transaction with memo (Clarity 4)...', 'info');
+    }
 
     try {
-      const result = await walletManager.sendTip(amount);
+      // Use message function if message provided (Clarity 4 feature)
+      const result = message 
+        ? await walletManager.sendTipWithMessage(amount, message)
+        : await walletManager.sendTip(amount);
+        
       console.log('✅ Transaction result:', result);
 
       const shortTxId = result.txId
         ? result.txId.substring(0, 8) + '...'
         : 'sent';
 
-      this.showStatus(
-        `✅ Tip sent! TX: ${shortTxId} - Balance will update shortly`,
-        'success',
-      );
+      const successMsg = message
+        ? `✅ Tip with message sent! TX: ${shortTxId} - Memo and message stored on-chain`
+        : `✅ Tip sent! TX: ${shortTxId} - Memo stored on-chain`;
 
+      this.showStatus(successMsg, 'success');
+
+      // Clear inputs
       if (this.elements.amountInput) {
         this.elements.amountInput.value = '';
       }
+      if (this.elements.messageInput) {
+        this.elements.messageInput.value = '';
+        if (this.elements.charCount) {
+          this.elements.charCount.textContent = '0';
+        }
+      }
+      this.state.hasMessage = false;
+      this.updateSendButton();
 
       contractManager.clearCache();
       setTimeout(() => this.refreshStats(), 3000);
@@ -416,7 +473,7 @@ export class UIController {
     }
 
     this.setLoading(true);
-    this.showStatus('Preparing withdrawal...', 'info');
+    this.showStatus('Preparing withdrawal with memo (Clarity 4)...', 'info');
 
     try {
       const result = await walletManager.withdraw();
@@ -426,7 +483,7 @@ export class UIController {
         ? result.txId.substring(0, 8) + '...'
         : 'sent';
 
-      this.showStatus(`Withdrawal sent! TX: ${shortTxId}`, 'success');
+      this.showStatus(`Withdrawal sent! TX: ${shortTxId} - Memo stored on-chain`, 'success');
 
       setTimeout(() => this.refreshStats(), CONFIG.TX.POLLING_INTERVAL);
     } catch (error) {
@@ -458,6 +515,12 @@ export class UIController {
       }
       if (this.elements.totalTips) {
         this.elements.totalTips.textContent = formatStx(stats.totalTips || 0);
+      }
+      if (this.elements.totalTippers) {
+        this.elements.totalTippers.textContent = stats.totalTippers || 0;
+      }
+      if (this.elements.totalTransactions) {
+        this.elements.totalTransactions.textContent = stats.totalTransactions || 0;
       }
 
       this.showStatus('Stats updated', 'success');
