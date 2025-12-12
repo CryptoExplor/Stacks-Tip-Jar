@@ -1,6 +1,6 @@
-// wallet.js - Wallet management
+// wallet.js - Wallet management with Clarity 4 message support
 import { CONFIG } from './config.js';
-import { uintCV, cvToHex, standardPrincipalCV } from '@stacks/transactions';
+import { uintCV, cvToHex, standardPrincipalCV, stringUtf8CV } from '@stacks/transactions';
 
 export class WalletManager {
   constructor() {
@@ -148,6 +148,12 @@ export class WalletManager {
 
   encodePrincipal(address) {
     const cv = standardPrincipalCV(address);
+    return cvToHex(cv);
+  }
+
+  // NEW: Encode string-utf8 for Clarity 4 messages
+  encodeClarityString(str) {
+    const cv = stringUtf8CV(str);
     return cvToHex(cv);
   }
 
@@ -401,6 +407,45 @@ export class WalletManager {
     }
   }
 
+  // NEW: Send tip with message (Clarity 4 feature)
+  async sendTipWithMessage(amount, message) {
+    console.log('💬 Attempting to send tip with message:', amount, 'STX');
+    console.log('📝 Message:', message);
+
+    if (!this.address) {
+      throw new Error('Wallet not connected');
+    }
+
+    if (!amount || !Number.isFinite(amount) || amount <= 0) {
+      throw new Error('Invalid tip amount');
+    }
+
+    if (!message || message.length === 0) {
+      // Fall back to regular tip if no message
+      return await this.sendTip(amount);
+    }
+
+    if (message.length > 280) {
+      throw new Error('Message too long (max 280 characters)');
+    }
+
+    const microAmount = Math.floor(amount * 1_000_000);
+    console.log('💰 Micro amount:', microAmount);
+
+    try {
+      if (this.walletType === 'leather') {
+        return await this.sendTipWithMessageLeather(microAmount, message);
+      } else if (this.walletType === 'xverse') {
+        return await this.sendTipWithMessageXverse(microAmount, message);
+      } else {
+        throw new Error('Unknown wallet type: ' + this.walletType);
+      }
+    } catch (error) {
+      console.error('❌ Send tip with message error:', error);
+      throw error;
+    }
+  }
+
   async sendTipLeather(microAmount) {
     console.log('🦊 Sending via Leather...');
 
@@ -452,6 +497,52 @@ export class WalletManager {
     }
   }
 
+  // NEW: Send tip with message via Leather
+  async sendTipWithMessageLeather(microAmount, message) {
+    console.log('🦊 Sending with message via Leather...');
+
+    const provider = window.LeatherProvider || window.HiroWalletProvider;
+    if (!provider) throw new Error('Leather provider not found');
+
+    try {
+      const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
+      const amountHex = this.encodeClarityUint(microAmount);
+      const messageHex = this.encodeClarityString(message);
+
+      const params = {
+        contract: contractId,
+        functionName: 'send-tip-with-message',
+        functionArgs: [amountHex, messageHex],
+        postConditionMode: 'allow',
+        network: CONFIG.NETWORK.DEFAULT,
+      };
+
+      console.log('📤 Calling send-tip-with-message:', params);
+
+      const response = await provider.request('stx_callContract', params);
+      console.log('✅ Transaction response:', response);
+
+      if (response.error) {
+        throw new Error(response.error.message || 'Transaction failed');
+      }
+
+      const txid = this.extractTxId(response);
+      if (!txid) {
+        throw new Error('No transaction ID returned');
+      }
+
+      return {
+        success: true,
+        txId: txid,
+        walletType: 'leather',
+        hasMessage: true
+      };
+    } catch (error) {
+      console.error('❌ Leather transaction failed:', error);
+      throw new Error(error.message || 'Transaction failed');
+    }
+  }
+
   async sendTipXverse(microAmount) {
     console.log('⚡ Sending via Xverse...');
 
@@ -495,6 +586,52 @@ export class WalletManager {
         success: true,
         txId: txid,
         walletType: 'xverse',
+      };
+    } catch (error) {
+      console.error('❌ Xverse transaction failed:', error);
+      throw new Error(error.message || 'Transaction failed');
+    }
+  }
+
+  // NEW: Send tip with message via Xverse
+  async sendTipWithMessageXverse(microAmount, message) {
+    console.log('⚡ Sending with message via Xverse...');
+
+    if (!window.XverseProviders) throw new Error('Xverse provider not found');
+
+    try {
+      const stacksProvider = window.XverseProviders.StacksProvider;
+      const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
+      const amountHex = this.encodeClarityUint(microAmount);
+      const messageHex = this.encodeClarityString(message);
+
+      const params = {
+        contract: contractId,
+        functionName: 'send-tip-with-message',
+        functionArgs: [amountHex, messageHex],
+        postConditionMode: 'allow',
+        network: CONFIG.NETWORK.DEFAULT,
+      };
+
+      console.log('📤 Calling send-tip-with-message:', params);
+
+      const response = await stacksProvider.request('stx_callContract', params);
+      console.log('✅ Transaction response:', response);
+
+      if (response.error) {
+        throw new Error(response.error.message || 'Transaction failed');
+      }
+
+      const txid = this.extractTxId(response);
+      if (!txid) {
+        throw new Error('No transaction ID returned');
+      }
+
+      return {
+        success: true,
+        txId: txid,
+        walletType: 'xverse',
+        hasMessage: true
       };
     } catch (error) {
       console.error('❌ Xverse transaction failed:', error);
