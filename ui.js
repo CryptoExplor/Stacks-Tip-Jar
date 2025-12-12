@@ -1,5 +1,5 @@
-// ui.js - UI controller with Clarity 4 message support
-import { CONFIG, formatStx, isFaucetAvailable, getClarity4Features } from './config.js';
+// ui.js - UI controller with transaction history support
+import { CONFIG, formatStx, isFaucetAvailable, getClarity4Features, shortAddress } from './config.js';
 import { walletManager } from './wallet.js';
 import { contractManager } from './contract.js';
 
@@ -10,7 +10,9 @@ export class UIController {
       loading: false,
       connected: false,
       stats: null,
-      hasMessage: false
+      hasMessage: false,
+      history: [],
+      historyLimit: 10
     };
     this.faucetTimer = null;
   }
@@ -68,6 +70,12 @@ export class UIController {
       totalTransactions: document.getElementById('totalTransactions'),
       refreshBtn: document.getElementById('refreshBtn'),
 
+      // History
+      historySection: document.getElementById('historySection'),
+      historyList: document.getElementById('historyList'),
+      refreshHistoryBtn: document.getElementById('refreshHistoryBtn'),
+      loadMoreBtn: document.getElementById('loadMoreBtn'),
+
       // Owner-only withdraw
       withdrawBtn: document.getElementById('withdrawBtn'),
 
@@ -90,6 +98,10 @@ export class UIController {
     this.elements.sendTipBtn?.addEventListener('click', () => this.sendTip());
     this.elements.refreshBtn?.addEventListener('click', () => this.refreshStats());
 
+    // History
+    this.elements.refreshHistoryBtn?.addEventListener('click', () => this.refreshHistory());
+    this.elements.loadMoreBtn?.addEventListener('click', () => this.loadMoreHistory());
+
     // Withdraw
     this.elements.withdrawBtn?.addEventListener('click', () => this.withdraw());
 
@@ -106,14 +118,13 @@ export class UIController {
       });
     });
 
-    // NEW: Message character counter
+    // Message character counter
     this.elements.messageInput?.addEventListener('input', e => {
       const length = e.target.value.length;
       if (this.elements.charCount) {
         this.elements.charCount.textContent = length;
       }
       
-      // Update button text based on whether there's a message
       this.state.hasMessage = length > 0;
       this.updateSendButton();
     });
@@ -132,6 +143,10 @@ export class UIController {
       this.state.connected = walletState.connected;
       this.updateWalletUI(walletState);
       this.updateFaucetButton();
+      
+      if (walletState.connected) {
+        this.loadHistory();
+      }
     });
   }
 
@@ -145,7 +160,6 @@ export class UIController {
       console.log('⚠️ No wallets detected - showing install notice');
     }
 
-    // Disable buttons for unavailable wallets
     if (!availability.leather && this.elements.leatherBtn) {
       this.elements.leatherBtn.disabled = true;
       this.elements.leatherBtn.title = 'Leather wallet not installed';
@@ -160,6 +174,7 @@ export class UIController {
   async loadInitialData() {
     console.log('📊 Loading initial data...');
     await this.refreshStats();
+    await this.loadHistory();
 
     if (this.elements.networkDisplay) {
       const network = CONFIG.NETWORK.DEFAULT;
@@ -247,6 +262,120 @@ export class UIController {
     this.faucetTimer = setInterval(updateButton, 1000);
   }
 
+  // NEW: Load transaction history
+  async loadHistory() {
+    console.log('📜 Loading transaction history...');
+    
+    if (!this.elements.historyList) return;
+    
+    this.elements.historyList.innerHTML = '<div class="history-loading">Loading transaction history...</div>';
+    
+    try {
+      const history = await contractManager.getHistory(this.state.historyLimit);
+      this.state.history = history;
+      
+      if (history.length === 0) {
+        this.elements.historyList.innerHTML = '<div class="history-empty">No tips yet. Be the first to send one! 🚀</div>';
+      } else {
+        this.renderHistory(history);
+      }
+    } catch (error) {
+      console.error('❌ Failed to load history:', error);
+      this.elements.historyList.innerHTML = '<div class="history-empty">Failed to load transaction history</div>';
+    }
+  }
+
+  // NEW: Render history items
+  renderHistory(transactions) {
+    if (!this.elements.historyList) return;
+    
+    this.elements.historyList.innerHTML = '';
+    
+    transactions.forEach(tx => {
+      const item = this.createHistoryItem(tx);
+      this.elements.historyList.appendChild(item);
+    });
+  }
+
+  // NEW: Create a single history item
+  createHistoryItem(tx) {
+    const item = document.createElement('div');
+    item.className = 'history-item';
+    
+    const header = document.createElement('div');
+    header.className = 'history-item-header';
+    
+    const tipper = document.createElement('div');
+    tipper.className = 'history-item-tipper';
+    tipper.textContent = shortAddress(tx.tipper);
+    
+    const amount = document.createElement('div');
+    amount.className = 'history-item-amount';
+    amount.textContent = formatStx(tx.amount);
+    
+    header.appendChild(tipper);
+    header.appendChild(amount);
+    
+    const meta = document.createElement('div');
+    meta.className = 'history-item-meta';
+    
+    // Block height
+    const blockMeta = document.createElement('div');
+    blockMeta.className = 'history-item-meta-item';
+    blockMeta.innerHTML = `
+      <span class="history-item-meta-icon">📦</span>
+      <span>Block ${tx.blockHeight}</span>
+    `;
+    meta.appendChild(blockMeta);
+    
+    // Transaction ID
+    const txMeta = document.createElement('div');
+    txMeta.className = 'history-item-meta-item';
+    txMeta.innerHTML = `
+      <span class="history-item-meta-icon">#️⃣</span>
+      <span>TX ${tx.txId}</span>
+    `;
+    meta.appendChild(txMeta);
+    
+    // Has message badge
+    if (tx.hasMessage) {
+      const messageMeta = document.createElement('div');
+      messageMeta.className = 'history-item-meta-item';
+      messageMeta.innerHTML = `
+        <span class="message-badge">📝 HAS MESSAGE</span>
+      `;
+      meta.appendChild(messageMeta);
+    }
+    
+    item.appendChild(header);
+    item.appendChild(meta);
+    
+    return item;
+  }
+
+  // NEW: Refresh history
+  async refreshHistory() {
+    console.log('🔄 Refreshing history...');
+    
+    if (this.elements.refreshHistoryBtn) {
+      this.elements.refreshHistoryBtn.disabled = true;
+    }
+    
+    try {
+      await this.loadHistory();
+    } finally {
+      if (this.elements.refreshHistoryBtn) {
+        this.elements.refreshHistoryBtn.disabled = false;
+      }
+    }
+  }
+
+  // NEW: Load more history
+  async loadMoreHistory() {
+    this.state.historyLimit += 10;
+    await this.loadHistory();
+  }
+
   async connectLeather() {
     console.log('🦊 Connect Leather clicked');
     this.setLoading(true);
@@ -255,6 +384,7 @@ export class UIController {
     try {
       await walletManager.connectLeather();
       this.showStatus(`Connected with Leather!`, 'success');
+      await this.loadHistory();
     } catch (error) {
       console.error('❌ Leather connection failed:', error);
       this.showStatus(
@@ -274,6 +404,7 @@ export class UIController {
     try {
       await walletManager.connectXverse();
       this.showStatus(`Connected with Xverse!`, 'success');
+      await this.loadHistory();
     } catch (error) {
       console.error('❌ Xverse connection failed:', error);
       this.showStatus(
@@ -293,6 +424,12 @@ export class UIController {
     if (this.faucetTimer) {
       clearInterval(this.faucetTimer);
       this.faucetTimer = null;
+    }
+    
+    // Clear history
+    this.state.history = [];
+    if (this.elements.historyList) {
+      this.elements.historyList.innerHTML = '<div class="history-empty">Connect wallet to view history</div>';
     }
   }
 
@@ -396,7 +533,6 @@ export class UIController {
 
     this.setLoading(true);
 
-    // Show different status based on whether message is included
     if (message) {
       this.showStatus('Preparing transaction with custom message (Clarity 4)...', 'info');
     } else {
@@ -404,7 +540,6 @@ export class UIController {
     }
 
     try {
-      // Use message function if message provided (Clarity 4 feature)
       const result = message 
         ? await walletManager.sendTipWithMessage(amount, message)
         : await walletManager.sendTip(amount);
@@ -436,8 +571,9 @@ export class UIController {
 
       contractManager.clearCache();
       setTimeout(() => this.refreshStats(), 3000);
+      setTimeout(() => this.refreshHistory(), 5000);
       setTimeout(() => this.refreshStats(), 10000);
-      setTimeout(() => this.refreshStats(), 30000);
+      setTimeout(() => this.refreshHistory(), 15000);
     } catch (error) {
       console.error('❌ Send tip failed:', error);
       if (error.message && error.message.toLowerCase().includes('cancel')) {
@@ -562,6 +698,7 @@ export class UIController {
       this.elements.refreshBtn,
       this.elements.withdrawBtn,
       this.elements.faucetBtn,
+      this.elements.refreshHistoryBtn
     ];
 
     buttons.forEach(btn => {
