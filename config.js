@@ -1,6 +1,6 @@
-// config.js - Fixed configuration
+// config.js - Configuration
 export const CONFIG = {
-  // Contract configuration - FIXED: Use tip-jar (matches your deployed contract)
+  // Contract configuration
   CONTRACT: {
     ADDRESS: 'ST3ZQXJPR493FCYNAVFX1YSK7EMT6JF909E3SDNQG',
     NAME: 'tip-jar-v2',
@@ -43,19 +43,6 @@ export const CONFIG = {
     QUICK_AMOUNTS: [0.1, 0.5, 1, 5],
     MIN_TIP: 0.000001,
     DECIMALS: 6
-  },
-
-  // Farcaster Frame support
-  FARCASTER: {
-    ENABLED: true,
-    FRAME_VERSION: 'vNext',
-    IMAGE_ASPECT_RATIO: '1:1'
-  },
-
-  // Reown AppKit (for multi-wallet support)
-  REOWN: {
-    PROJECT_ID: '75cff2cd446ad1ae6c9f22c5c9bbcd6d', // Get from https://cloud.reown.com
-    ENABLED: true
   }
 };
 
