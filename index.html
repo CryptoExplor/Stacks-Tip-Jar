@@ -3,32 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Stacks Tip Jar - Farcaster Miniapp</title>
+  <title>Stacks Tip Jar</title>
   
   <!-- SEO Meta Tags -->
-  <meta name="description" content="Send STX tips on Bitcoin L2 - Built with Clarity 4. A Farcaster miniapp for the Stacks ecosystem." />
-  <meta name="keywords" content="stacks, bitcoin, tip jar, cryptocurrency, STX, farcaster, miniapp, clarity4, web3" />
+  <meta name="description" content="Send STX tips on Bitcoin L2 - Built with Clarity 4" />
+  <meta name="keywords" content="stacks, bitcoin, tip jar, cryptocurrency, STX, clarity4, web3" />
   
-  <!-- Open Graph / Farcaster Frame -->
+  <!-- Open Graph -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://stacks-chi.vercel.app" />
-  <meta property="og:title" content="Stacks Tip Jar ⚡ - Farcaster Miniapp" />
+  <meta property="og:title" content="Stacks Tip Jar" />
   <meta property="og:description" content="Send STX tips on Bitcoin L2 with Clarity 4 smart contracts" />
   <meta property="og:image" content="https://stacks-chi.vercel.app/og-image.png" />
-  
-  <!-- Farcaster Frame Tags -->
-  <meta property="fc:frame" content="vNext" />
-  <meta property="fc:frame:image" content="https://stacks-chi.vercel.app/og-image.png" />
-  <meta property="fc:frame:image:aspect_ratio" content="1:1" />
-  <meta property="fc:frame:button:1" content="Send Tip 💸" />
-  <meta property="fc:frame:button:1:action" content="link" />
-  <meta property="fc:frame:button:1:target" content="https://stacks-chi.vercel.app" />
-  <meta property="fc:frame:button:2" content="View Stats 📊" />
-  <meta property="fc:frame:button:2:action" content="post" />
-  
-  <!-- Farcaster Miniapp Specific -->
-  <meta name="fc:frame:app_version" content="2.0.0" />
-  <meta name="fc:frame:manifest" content="https://stacks-chi.vercel.app/.well-known/farcaster.json" />
   
   <!-- PWA Support -->
   <meta name="theme-color" content="#667eea" />
@@ -41,66 +27,15 @@
   
   <!-- Styles -->
   <link rel="stylesheet" href="/styles.css" />
-  
-  <!-- 
-    CRITICAL: Import Farcaster SDK FIRST before any other scripts
-    This ensures ready() is called as early as possible
-  -->
-  <script type="module">
-    (async () => {
-      console.log('🎯 [INLINE] Initializing Farcaster SDK...');
-      
-      try {
-        // Import SDK
-        const { sdk } = await import('@farcaster/miniapp-sdk');
-        
-        if (!sdk) {
-          console.log('ℹ️ [INLINE] SDK not available');
-          return;
-        }
-        
-        console.log('✅ [INLINE] SDK imported');
-        
-        // Call ready() IMMEDIATELY
-        if (sdk.actions && typeof sdk.actions.ready === 'function') {
-          console.log('🚀 [INLINE] Calling sdk.actions.ready()...');
-          
-          // Try async call first
-          try {
-            await sdk.actions.ready();
-            console.log('✅ [INLINE] ready() called (async)');
-          } catch (err) {
-            // Fallback to sync call
-            console.log('⚠️ [INLINE] Async ready() failed, trying sync...');
-            try {
-              sdk.actions.ready();
-              console.log('✅ [INLINE] ready() called (sync)');
-            } catch (err2) {
-              console.error('❌ [INLINE] Both ready() calls failed:', err2);
-            }
-          }
-          
-          // Store SDK globally
-          window.__FARCASTER_SDK_INLINE__ = sdk;
-        } else {
-          console.warn('⚠️ [INLINE] sdk.actions.ready not found');
-          console.log('Available:', Object.keys(sdk.actions || {}));
-        }
-      } catch (error) {
-        console.log('ℹ️ [INLINE] Not in Farcaster:', error.message);
-      }
-    })();
-  </script>
 </head>
 <body>
   <div class="container">
     <header class="header">
-      <h1>⚡ Stacks Tip Jar</h1>
-      <p class="subtitle">Send STX tips on Bitcoin L2 • Built with Clarity 4</p>
-      <div class="builder-badge">
-        <span class="badge-icon">🏆</span>
-        <span class="badge-text">Stacks Builder Challenge</span>
+      <div class="header-logo">
+        <img src="/icon.png" alt="Stacks Tip Jar" class="logo-icon" />
+        <h1>Stacks Tip Jar</h1>
       </div>
+      <p class="subtitle">Send STX tips on Bitcoin L2 • Built with Clarity 4</p>
     </header>
 
     <!-- Wallet Info -->
@@ -157,10 +92,6 @@
           <span>Xverse</span>
         </button>
       </div>
-      
-      <button class="btn btn-appkit" id="appkitBtn">
-        <span>Connect Wallet</span>
-      </button>
       
       <div class="install-notice" id="installNotice">
         💡 Don't have a wallet? Install 
@@ -242,7 +173,7 @@
     <!-- Footer -->
     <footer class="footer">
       <p>Built on <strong>Stacks</strong> • Secured by <strong>Bitcoin</strong></p>
-      <p>Enhanced with <strong>Clarity 4</strong> • Farcaster Ready</p>
+      <p>Enhanced with <strong>Clarity 4</strong></p>
       <p class="footer-links">
         <a href="https://github.com/CryptoExplor/stacks-tip-jar" target="_blank" rel="noopener">GitHub</a>
         <span>•</span>
@@ -253,10 +184,6 @@
     </footer>
   </div>
 
-  <!-- 
-    Main application script 
-    This loads AFTER the inline Farcaster SDK initialization
-  -->
   <script type="module" src="/main.js"></script>
 </body>
 </html>
