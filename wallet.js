@@ -1,4 +1,4 @@
-// wallet.js - Complete wallet management with AppKit support
+// wallet.js - Wallet management
 import { CONFIG } from './config.js';
 import { uintCV, cvToHex, standardPrincipalCV } from '@stacks/transactions';
 
@@ -10,74 +10,9 @@ export class WalletManager {
     this.isReady = false;
     this.lastFaucetClaim = null;
     this.autoReconnected = false;
-    this.appkit = null;
-    
-    // Initialize AppKit
-    this.initAppKit();
     
     // Load saved wallet state
     this.loadWalletState();
-  }
-
-  // Initialize Reown AppKit
-  async initAppKit() {
-    if (typeof window === 'undefined') return;
-    
-    try {
-      const { createAppKit } = await import('@reown/appkit');
-      // rename the imported class to avoid redeclaring the same identifier
-      const { BitcoinAdapter: BitcoinAdapterClass } = await import('@reown/appkit-adapter-bitcoin');
-      
-      // create adapter instance (different name from class)
-      const bitcoinAdapter = new BitcoinAdapterClass({
-        network: CONFIG.NETWORK.DEFAULT
-      });
-      
-      this.appkit = createAppKit({
-        adapters: [bitcoinAdapter],
-        networks: [{
-          id: CONFIG.NETWORK.DEFAULT === 'mainnet' ? 'stacks' : 'stacks-testnet',
-          name: CONFIG.NETWORK.DEFAULT === 'mainnet' ? 'Stacks' : 'Stacks Testnet',
-          nativeCurrency: { name: 'STX', symbol: 'STX', decimals: 6 },
-          rpcUrls: {
-            default: { http: [CONFIG.NETWORK.ENDPOINTS[CONFIG.NETWORK.DEFAULT]] }
-          }
-        }],
-        metadata: {
-          name: CONFIG.APP.NAME,
-          description: CONFIG.APP.DESCRIPTION,
-          url: CONFIG.APP.URL,
-          icons: [CONFIG.APP.ICON]
-        },
-        projectId: '75cff2cd446ad1ae6c9f22c5c9bbcd6d',
-        features: {
-          analytics: true,
-          connectMethodsOrder: ["wallet"],
-          email: false,
-          socials: []
-        }
-      });
-
-      // Subscribe to AppKit events (keep simple; adapt if AppKit API differs)
-      if (typeof this.appkit.subscribeEvents === 'function') {
-        this.appkit.subscribeEvents((event) => {
-          console.log('🌐 AppKit event:', event);
-          if (event.data?.address) {
-            this.address = event.data.address;
-            this.walletType = 'appkit';
-            this.autoReconnected = false;
-            this.saveWalletState();
-            this.notify();
-          }
-        });
-      } else {
-        console.warn('⚠️ appkit.subscribeEvents not available on this AppKit instance');
-      }
-
-      console.log('✅ AppKit initialized');
-    } catch (error) {
-      console.error('❌ AppKit initialization failed:', error);
-    }
   }
 
   saveWalletState() {
@@ -146,7 +81,7 @@ export class WalletManager {
 
     while (attempts < maxAttempts) {
       const availability = this.checkAvailability();
-      if (availability.leather || availability.xverse || availability.appkit) {
+      if (availability.leather || availability.xverse) {
         this.isReady = true;
         console.log('✅ Wallets detected:', availability);
         return;
@@ -196,14 +131,13 @@ export class WalletManager {
 
   checkAvailability() {
     if (typeof window === 'undefined') {
-      return { leather: false, xverse: false, appkit: false };
+      return { leather: false, xverse: false };
     }
 
     return {
       leather: typeof window.LeatherProvider !== 'undefined' || 
                typeof window.HiroWalletProvider !== 'undefined',
-      xverse: typeof window.XverseProviders !== 'undefined',
-      appkit: this.appkit !== null
+      xverse: typeof window.XverseProviders !== 'undefined'
     };
   }
 
@@ -337,50 +271,8 @@ export class WalletManager {
     }
   }
 
-  async connectAppKit() {
-    console.log('🌐 Attempting AppKit connection...');
-
-    if (!this.appkit) {
-      throw new Error('AppKit not initialized');
-    }
-
-    try {
-      if (typeof this.appkit.open === 'function') {
-        await this.appkit.open();
-      } else if (typeof this.appkit.connect === 'function') {
-        await this.appkit.connect();
-      }
-
-      // Wait for connection with timeout
-      return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error('Connection timeout'));
-        }, 30000); // 30 second timeout
-
-        const checkConnection = setInterval(() => {
-          if (this.address && this.walletType === 'appkit') {
-            clearTimeout(timeout);
-            clearInterval(checkConnection);
-            resolve({
-              success: true,
-              address: this.address,
-              walletType: this.walletType,
-            });
-          }
-        }, 500);
-      });
-    } catch (error) {
-      console.error('❌ AppKit connection error:', error);
-      throw error;
-    }
-  }
-
   disconnect() {
     console.log('🔌 Disconnecting wallet...');
-    
-    if (this.walletType === 'appkit' && this.appkit && typeof this.appkit.disconnect === 'function') {
-      try { this.appkit.disconnect(); } catch (e) { console.warn('⚠️ appkit.disconnect failed', e); }
-    }
     
     this.address = null;
     this.walletType = null;
@@ -500,8 +392,6 @@ export class WalletManager {
         return await this.sendTipLeather(microAmount);
       } else if (this.walletType === 'xverse') {
         return await this.sendTipXverse(microAmount);
-      } else if (this.walletType === 'appkit') {
-        return await this.sendTipAppKit(microAmount);
       } else {
         throw new Error('Unknown wallet type: ' + this.walletType);
       }
@@ -612,45 +502,6 @@ export class WalletManager {
     }
   }
 
-  async sendTipAppKit(microAmount) {
-    console.log('🌐 Sending via AppKit...');
-
-    if (!this.appkit) {
-      throw new Error('AppKit not initialized');
-    }
-
-    try {
-      const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
-      const argHex = this.encodeClarityUint(microAmount);
-
-      const params = {
-        contract: contractId,
-        functionName: 'send-tip',
-        functionArgs: [argHex],
-        postConditionMode: 'allow',
-        network: CONFIG.NETWORK.DEFAULT,
-      };
-
-      const response = await this.appkit.writeContract(params);
-      console.log('✅ AppKit response:', response);
-
-      const txid = this.extractTxId(response);
-
-      if (!txid) {
-        throw new Error('No transaction ID returned');
-      }
-
-      return {
-        success: true,
-        txId: txid,
-        walletType: 'appkit',
-      };
-    } catch (error) {
-      console.error('❌ AppKit transaction failed:', error);
-      throw new Error(error.message || 'Transaction failed');
-    }
-  }
-
   async withdraw() {
     console.log('⬇️ Attempting withdrawal...');
 
@@ -667,8 +518,6 @@ export class WalletManager {
         return await this.withdrawLeather(this.address);
       } else if (this.walletType === 'xverse') {
         return await this.withdrawXverse(this.address);
-      } else if (this.walletType === 'appkit') {
-        return await this.withdrawAppKit(this.address);
       } else {
         throw new Error('Unknown wallet type: ' + this.walletType);
       }
@@ -724,27 +573,6 @@ export class WalletManager {
     if (!txid) throw new Error('No transaction ID returned');
 
     return { success: true, txId: txid, walletType: 'xverse' };
-  }
-
-  async withdrawAppKit(recipient) {
-    if (!this.appkit) throw new Error('AppKit not initialized');
-
-    const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
-    const argHex = this.encodePrincipal(recipient);
-
-    const params = {
-      contract: contractId,
-      functionName: 'withdraw',
-      functionArgs: [argHex],
-      postConditionMode: 'allow',
-      network: CONFIG.NETWORK.DEFAULT,
-    };
-
-    const response = await this.appkit.writeContract(params);
-    const txid = this.extractTxId(response);
-    if (!txid) throw new Error('No transaction ID returned');
-
-    return { success: true, txId: txid, walletType: 'appkit' };
   }
 }
 
