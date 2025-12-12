@@ -3,17 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Stacks Tip Jar</title>
+  <title>Stacks Tip Jar - Clarity 4 Enhanced</title>
   
   <!-- SEO Meta Tags -->
-  <meta name="description" content="Send STX tips on Bitcoin L2 - Built with Clarity 4" />
-  <meta name="keywords" content="stacks, bitcoin, tip jar, cryptocurrency, STX, clarity4, web3" />
+  <meta name="description" content="Send STX tips with memos on Bitcoin L2 - Built with Clarity 4" />
+  <meta name="keywords" content="stacks, bitcoin, tip jar, cryptocurrency, STX, clarity4, web3, memos" />
   
   <!-- Open Graph -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://stacks-chi.vercel.app" />
-  <meta property="og:title" content="Stacks Tip Jar" />
-  <meta property="og:description" content="Send STX tips on Bitcoin L2 with Clarity 4 smart contracts" />
+  <meta property="og:title" content="Stacks Tip Jar - Clarity 4 Enhanced" />
+  <meta property="og:description" content="Send STX tips with custom memos and messages on Bitcoin L2" />
   <meta property="og:image" content="https://stacks-chi.vercel.app/og-image.png" />
   
   <!-- PWA Support -->
@@ -34,8 +34,9 @@
       <div class="header-logo">
         <img src="/icon.png" alt="Stacks Tip Jar" class="logo-icon" />
         <h1>Stacks Tip Jar</h1>
+        <span class="clarity4-badge">Clarity 4</span>
       </div>
-      <p class="subtitle">Send STX tips on Bitcoin L2 • Built with Clarity 4</p>
+      <p class="subtitle">Send STX tips with memos • Built on Bitcoin L2</p>
     </header>
 
     <!-- Wallet Info -->
@@ -114,6 +115,16 @@
         </button>
       </div>
 
+      <!-- Clarity 4 Feature Badge -->
+      <div class="clarity4-features">
+        <h3>✨ Clarity 4 Features Active</h3>
+        <div class="feature-tags">
+          <span class="feature-tag">📝 On-chain Memos</span>
+          <span class="feature-tag">💬 Custom Messages</span>
+          <span class="feature-tag">🔐 Consensus Hashing</span>
+        </div>
+      </div>
+
       <div class="input-group">
         <label class="section-label">Quick Amounts</label>
         <div class="quick-amounts">
@@ -136,9 +147,26 @@
         />
       </div>
 
+      <!-- NEW: Message Input (Clarity 4 feature) -->
+      <div class="input-group">
+        <label for="message" class="section-label">
+          💬 Add Message (Optional - Clarity 4)
+          <span class="feature-new">NEW</span>
+        </label>
+        <textarea 
+          id="message" 
+          maxlength="280"
+          placeholder="Add a custom message to your tip (up to 280 characters)..."
+          rows="3"
+        ></textarea>
+        <div class="char-count">
+          <span id="charCount">0</span> / 280 characters
+        </div>
+      </div>
+
       <button class="btn btn-primary" id="sendTipBtn">
         <span class="btn-icon">💸</span>
-        <span>Send Tip</span>
+        <span id="sendTipBtnText">Send Tip</span>
       </button>
 
       <!-- Premium Achievement -->
@@ -173,7 +201,7 @@
     <!-- Footer -->
     <footer class="footer">
       <p>Built on <strong>Stacks</strong> • Secured by <strong>Bitcoin</strong></p>
-      <p>Enhanced with <strong>Clarity 4</strong></p>
+      <p>Enhanced with <strong>Clarity 4</strong> • On-chain Memos & Messages</p>
       <p class="footer-links">
         <a href="https://github.com/CryptoExplor/stacks-tip-jar" target="_blank" rel="noopener">GitHub</a>
         <span>•</span>
