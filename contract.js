@@ -1,4 +1,4 @@
-// contract.js - Enhanced with transaction history support
+// contract.js - Enhanced with FIXED transaction history support
 
 import { CONFIG, getNetworkEndpoint, microToStx } from './config.js';
 
@@ -51,7 +51,6 @@ export class ContractManager {
     console.log('📝 Contract ID:', contractId);
 
     try {
-      // Fetch all contract data in parallel
       const fetchPromises = [
         this.callReadOnly('get-contract-balance', [], network),
         this.callReadOnly('get-total-tips', [], network),
@@ -60,7 +59,6 @@ export class ContractManager {
         this.callReadOnly('get-owner', [], network),
       ];
 
-      // If user address provided, fetch user stats
       if (userAddress) {
         fetchPromises.push(
           this.callReadOnly('get-tipper-stats', [this.encodePrincipal(userAddress)], network),
@@ -72,7 +70,6 @@ export class ContractManager {
 
       console.log('📊 Raw API responses:', results);
 
-      // Extract values
       const balance = results[0].status === 'fulfilled' 
         ? this.extractValue(results[0].value, 'uint') 
         : 0;
@@ -93,7 +90,6 @@ export class ContractManager {
         ? this.extractValue(results[4].value, 'principal')
         : null;
 
-      // Convert to STX for display
       const balanceSTX = microToStx(balance);
       const totalTipsSTX = microToStx(totalTips);
 
@@ -112,7 +108,6 @@ export class ContractManager {
         lastUpdate: Date.now(),
       };
 
-      // Add user stats if available
       if (userAddress && results.length > 5) {
         const userStatsResult = results[5].status === 'fulfilled' ? results[5].value : null;
         const isPremiumResult = results[6].status === 'fulfilled' ? results[6].value : null;
@@ -138,7 +133,20 @@ export class ContractManager {
     }
   }
 
-  // NEW: Fetch transaction history
+  // FIXED: Proper Clarity uint encoding
+  encodeClarityUint(value) {
+    // Clarity uint format: 0x01 (type prefix) + 32-byte big-endian value
+    const hex = value.toString(16).padStart(32, '0');
+    return `0x01${hex}`;
+  }
+
+  // Encode principal for contract calls
+  encodePrincipal(address) {
+    // For read-only calls, we can use the simpler format
+    return `0x0${Buffer.from(address, 'utf-8').toString('hex').padEnd(80, '0')}`;
+  }
+
+  // NEW: FIXED fetch transaction history
   async fetchTransactionHistory(network = CONFIG.NETWORK.DEFAULT, limit = 10) {
     console.log('📜 Fetching transaction history...');
     
@@ -147,7 +155,10 @@ export class ContractManager {
       const totalResult = await this.callReadOnly('get-total-transactions', [], network);
       const total = this.extractValue(totalResult, 'uint');
       
+      console.log('📊 Total transactions:', total);
+      
       if (total === 0) {
+        console.log('✅ No transactions yet');
         return [];
       }
       
@@ -155,22 +166,27 @@ export class ContractManager {
       const start = Math.max(1, total - limit + 1);
       const transactions = [];
       
+      console.log(`🔄 Fetching transactions ${start} to ${total}...`);
+      
+      // Fetch in parallel for better performance
+      const fetchPromises = [];
       for (let i = total; i >= start && i > 0; i--) {
-        try {
-          const txResult = await this.callReadOnly(
-            'get-transaction', 
-            [this.encodeClarityUint(i)], 
-            network
-          );
-          
-          const tx = this.extractTransaction(txResult, i);
-          if (tx) {
-            transactions.push(tx);
-          }
-        } catch (error) {
-          console.warn(`Failed to fetch transaction ${i}:`, error);
-        }
+        fetchPromises.push(this.fetchSingleTransaction(i, network));
       }
+      
+      const results = await Promise.allSettled(fetchPromises);
+      
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled' && result.value) {
+          transactions.push(result.value);
+        } else {
+          const txId = total - index;
+          console.warn(`⚠️ Failed to fetch transaction ${txId}:`, result.reason);
+        }
+      });
+      
+      // Sort by txId descending (most recent first)
+      transactions.sort((a, b) => b.txId - a.txId);
       
       console.log('✅ Fetched', transactions.length, 'transactions');
       this.cache.history = transactions;
@@ -178,6 +194,32 @@ export class ContractManager {
     } catch (error) {
       console.error('❌ Failed to fetch transaction history:', error);
       return [];
+    }
+  }
+
+  // NEW: Fetch a single transaction with better error handling
+  async fetchSingleTransaction(txId, network = CONFIG.NETWORK.DEFAULT) {
+    try {
+      console.log(`📄 Fetching transaction ${txId}...`);
+      
+      const result = await this.callReadOnly(
+        'get-transaction', 
+        [this.encodeClarityUint(txId)], 
+        network
+      );
+      
+      const tx = this.extractTransaction(result, txId);
+      
+      if (tx) {
+        console.log(`✅ Transaction ${txId}:`, tx);
+        return tx;
+      } else {
+        console.warn(`⚠️ Transaction ${txId} returned null/none`);
+        return null;
+      }
+    } catch (error) {
+      console.error(`❌ Failed to fetch transaction ${txId}:`, error);
+      return null;
     }
   }
 
@@ -203,45 +245,6 @@ export class ContractManager {
     }
   }
 
-  // NEW: Fetch a specific transaction
-  async fetchTransaction(txId, network = CONFIG.NETWORK.DEFAULT) {
-    try {
-      const result = await this.callReadOnly(
-        'get-transaction',
-        [this.encodeClarityUint(txId)],
-        network
-      );
-      
-      return this.extractTransaction(result, txId);
-    } catch (error) {
-      console.error(`❌ Failed to fetch transaction ${txId}:`, error);
-      return null;
-    }
-  }
-
-  // NEW: Fetch message for a transaction
-  async fetchTipMessage(tipper, tipId, network = CONFIG.NETWORK.DEFAULT) {
-    try {
-      const result = await this.callReadOnly(
-        'get-tip-message',
-        [this.encodePrincipal(tipper), this.encodeClarityUint(tipId)],
-        network
-      );
-      
-      if (result && result.result) {
-        const messageData = result.result;
-        if (messageData && typeof messageData === 'object' && messageData.message) {
-          return messageData.message;
-        }
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('❌ Failed to fetch tip message:', error);
-      return null;
-    }
-  }
-
   async callReadOnly(functionName, functionArgs = [], network = CONFIG.NETWORK.DEFAULT) {
     const endpoint = getNetworkEndpoint(network);
     const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
@@ -255,6 +258,7 @@ export class ContractManager {
     };
 
     console.log(`📡 Calling ${functionName} at ${url}`);
+    console.log(`📦 Arguments:`, functionArgs);
 
     try {
       const response = await fetch(url, {
@@ -278,16 +282,6 @@ export class ContractManager {
     }
   }
 
-  // Encode principal for contract calls
-  encodePrincipal(address) {
-    return `0x${Buffer.from(address).toString('hex')}`;
-  }
-
-  encodeClarityUint(value) {
-    const hex = value.toString(16).padStart(32, '0');
-    return `0x0100000000000000000000000000000000${hex}`;
-  }
-
   decodeClarityHex(hexString, expectedType) {
     console.log('🔍 Decoding Clarity hex:', hexString, 'Type:', expectedType);
     
@@ -300,8 +294,8 @@ export class ContractManager {
     console.log('📦 Hex without prefix:', hex);
 
     if (expectedType === 'uint') {
-      if (hex.startsWith('07') && hex.charAt(2) === '0' && hex.charAt(3) === '1') {
-        hex = hex.slice(4);
+      if (hex.startsWith('01')) {
+        hex = hex.slice(2);
         console.log('🔢 Value bytes:', hex);
         
         try {
@@ -329,18 +323,18 @@ export class ContractManager {
     }
 
     if (expectedType === 'bool') {
-      if (hex.startsWith('0703')) return true;
-      if (hex.startsWith('0704')) return false;
+      if (hex.startsWith('03')) return true;
+      if (hex.startsWith('04')) return false;
       return false;
     }
 
     if (expectedType === 'principal') {
-      if (hex.startsWith('0705') || hex.startsWith('0706')) {
+      if (hex.startsWith('05') || hex.startsWith('06')) {
         if (this.cache.owner && (this.cache.owner.startsWith('ST') || this.cache.owner.startsWith('SP'))) {
           console.log('✅ Using cached principal:', this.cache.owner);
           return this.cache.owner;
         }
-        return '0x0705' + hex;
+        return '0x05' + hex;
       }
       return null;
     }
@@ -423,7 +417,6 @@ export class ContractManager {
     return result;
   }
 
-  // Extract user stats from tuple
   extractUserStats(response) {
     const result = response.result || response;
     
@@ -444,29 +437,43 @@ export class ContractManager {
     };
   }
 
-  // NEW: Extract transaction from response
+  // FIXED: Extract transaction from response with better handling
   extractTransaction(response, txId) {
-    const result = response.result || response;
+    console.log(`🔍 Extracting transaction ${txId}:`, response);
     
-    if (!result || result === 'none') {
+    const result = response?.result || response;
+    
+    // Check for "none" response (transaction doesn't exist)
+    if (!result || result === 'none' || 
+        (typeof result === 'string' && result.includes('none'))) {
+      console.log(`⚠️ Transaction ${txId} is none/doesn't exist`);
       return null;
     }
     
+    // Handle tuple response
     if (typeof result === 'object' && result !== null) {
-      return {
-        txId: txId,
-        tipper: this.extractValue(result.tipper, 'principal'),
-        amount: microToStx(this.extractValue(result.amount, 'uint')),
-        blockHeight: this.extractValue(result['block-height'] || result.blockHeight, 'uint'),
-        timestamp: this.extractValue(result.timestamp, 'uint'),
-        hasMessage: this.extractValue(result['has-message'] || result.hasMessage, 'bool')
-      };
+      try {
+        const tx = {
+          txId: txId,
+          tipper: this.extractValue(result.tipper, 'principal'),
+          amount: microToStx(this.extractValue(result.amount, 'uint')),
+          blockHeight: this.extractValue(result['block-height'] || result.blockHeight, 'uint'),
+          timestamp: this.extractValue(result.timestamp, 'uint'),
+          hasMessage: this.extractValue(result['has-message'] || result.hasMessage, 'bool')
+        };
+        
+        console.log(`✅ Extracted transaction ${txId}:`, tx);
+        return tx;
+      } catch (error) {
+        console.error(`❌ Error extracting transaction ${txId}:`, error);
+        return null;
+      }
     }
     
+    console.warn(`⚠️ Unexpected response format for transaction ${txId}`);
     return null;
   }
 
-  // NEW: Extract user history
   extractUserHistory(response) {
     const result = response.result || response;
     
