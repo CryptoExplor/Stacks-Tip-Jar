@@ -1,4 +1,4 @@
-// contract.js - FIXED transaction history support
+// contract.js - Enhanced with FIXED transaction history support
 
 import { CONFIG, getNetworkEndpoint, microToStx } from './config.js';
 
@@ -133,96 +133,22 @@ export class ContractManager {
     }
   }
 
-  // FIXED: Proper Clarity uint encoding using hex string format
+  // FIXED: Proper Clarity uint encoding
   encodeClarityUint(value) {
-    // Clarity expects "u" prefix for unsigned integers in string format
-    return `0x0100000000000000000000000000000000${value.toString(16).padStart(16, '0')}`;
+    // Clarity uint format: 0x01 (type prefix) + 32-byte big-endian value
+    const hex = value.toString(16).padStart(32, '0');
+    return `0x01${hex}`;
   }
 
   // Encode principal for contract calls
   encodePrincipal(address) {
-    // Simple principal encoding for read-only calls
-    return address;
+    // For read-only calls, we can use the simpler format
+    return `0x0${Buffer.from(address, 'utf-8').toString('hex').padEnd(80, '0')}`;
   }
 
-  // NEW: FIXED fetch transaction history using Hiro API
+  // NEW: FIXED fetch transaction history
   async fetchTransactionHistory(network = CONFIG.NETWORK.DEFAULT, limit = 10) {
-    console.log('📜 Fetching transaction history via Hiro API...');
-    
-    try {
-      const endpoint = getNetworkEndpoint(network);
-      const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
-      
-      // Use Hiro API to get contract transactions
-      const url = `${endpoint}/extended/v1/address/${CONFIG.CONTRACT.ADDRESS}/transactions?limit=${limit}&unanchored=false`;
-      
-      console.log('📡 Fetching from:', url);
-      
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        console.warn('⚠️ Failed to fetch transactions from Hiro API');
-        return [];
-      }
-      
-      const data = await response.json();
-      console.log('📊 Hiro API response:', data);
-      
-      if (!data.results || !Array.isArray(data.results)) {
-        console.warn('⚠️ No results in API response');
-        return [];
-      }
-      
-      // Filter for contract calls to send-tip
-      const tipTransactions = data.results
-        .filter(tx => {
-          return tx.tx_type === 'contract_call' &&
-                 tx.contract_call?.contract_id === contractId &&
-                 (tx.contract_call?.function_name === 'send-tip' ||
-                  tx.contract_call?.function_name === 'send-tip-with-message') &&
-                 tx.tx_status === 'success';
-        })
-        .slice(0, limit)
-        .map((tx, index) => {
-          // Extract amount from function args
-          let amount = 0;
-          if (tx.contract_call?.function_args) {
-            const args = tx.contract_call.function_args;
-            if (args.length > 0 && args[0].repr) {
-              // Parse "u1000000" format
-              const match = args[0].repr.match(/u(\d+)/);
-              if (match) {
-                amount = parseInt(match[1], 10);
-              }
-            }
-          }
-          
-          const hasMessage = tx.contract_call?.function_name === 'send-tip-with-message';
-          
-          return {
-            txId: data.results.length - index, // Pseudo ID based on position
-            tipper: tx.sender_address,
-            amount: microToStx(amount),
-            blockHeight: tx.block_height,
-            timestamp: tx.burn_block_time,
-            hasMessage: hasMessage,
-            txHash: tx.tx_id
-          };
-        });
-      
-      console.log('✅ Processed', tipTransactions.length, 'tip transactions');
-      this.cache.history = tipTransactions;
-      return tipTransactions;
-      
-    } catch (error) {
-      console.error('❌ Failed to fetch transaction history:', error);
-      return [];
-    }
-  }
-
-  // Alternative: Fetch using contract storage (if tip-jar-v4 is deployed)
-  async fetchTransactionHistoryFromContract(network = CONFIG.NETWORK.DEFAULT, limit = 10) {
-    console.log('📜 Fetching transaction history from contract storage...');
+    console.log('📜 Fetching transaction history...');
     
     try {
       // Get total transaction count first
@@ -236,50 +162,86 @@ export class ContractManager {
         return [];
       }
       
-      // Calculate range
+      // Fetch the last N transactions
       const start = Math.max(1, total - limit + 1);
       const transactions = [];
       
       console.log(`🔄 Fetching transactions ${start} to ${total}...`);
       
-      // Fetch in parallel
+      // Fetch in parallel for better performance
       const fetchPromises = [];
       for (let i = total; i >= start && i > 0; i--) {
-        fetchPromises.push(
-          this.callReadOnly('get-transaction', [`u${i}`], network)
-            .then(result => ({ id: i, result }))
-            .catch(err => ({ id: i, error: err }))
-        );
+        fetchPromises.push(this.fetchSingleTransaction(i, network));
       }
       
-      const results = await Promise.all(fetchPromises);
+      const results = await Promise.allSettled(fetchPromises);
       
-      results.forEach(({ id, result, error }) => {
-        if (error) {
-          console.warn(`⚠️ Failed to fetch transaction ${id}:`, error.message);
-          return;
-        }
-        
-        try {
-          const tx = this.extractTransaction(result, id);
-          if (tx) {
-            transactions.push(tx);
-          }
-        } catch (err) {
-          console.warn(`⚠️ Failed to parse transaction ${id}:`, err.message);
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled' && result.value) {
+          transactions.push(result.value);
+        } else {
+          const txId = total - index;
+          console.warn(`⚠️ Failed to fetch transaction ${txId}:`, result.reason);
         }
       });
       
-      // Sort by txId descending
+      // Sort by txId descending (most recent first)
       transactions.sort((a, b) => b.txId - a.txId);
       
-      console.log('✅ Fetched', transactions.length, 'transactions from contract');
+      console.log('✅ Fetched', transactions.length, 'transactions');
       this.cache.history = transactions;
       return transactions;
-      
     } catch (error) {
-      console.error('❌ Failed to fetch transaction history from contract:', error);
+      console.error('❌ Failed to fetch transaction history:', error);
       return [];
+    }
+  }
+
+  // NEW: Fetch a single transaction with better error handling
+  async fetchSingleTransaction(txId, network = CONFIG.NETWORK.DEFAULT) {
+    try {
+      console.log(`📄 Fetching transaction ${txId}...`);
+      
+      const result = await this.callReadOnly(
+        'get-transaction', 
+        [this.encodeClarityUint(txId)], 
+        network
+      );
+      
+      const tx = this.extractTransaction(result, txId);
+      
+      if (tx) {
+        console.log(`✅ Transaction ${txId}:`, tx);
+        return tx;
+      } else {
+        console.warn(`⚠️ Transaction ${txId} returned null/none`);
+        return null;
+      }
+    } catch (error) {
+      console.error(`❌ Failed to fetch transaction ${txId}:`, error);
+      return null;
+    }
+  }
+
+  // NEW: Fetch user's transaction history
+  async fetchUserHistory(userAddress, network = CONFIG.NETWORK.DEFAULT) {
+    console.log('👤 Fetching user history for:', userAddress);
+    
+    try {
+      const result = await this.callReadOnly(
+        'get-user-transactions',
+        [this.encodePrincipal(userAddress)],
+        network
+      );
+      
+      const userHistory = this.extractUserHistory(result);
+      console.log('✅ User history:', userHistory);
+      
+      this.cache.userHistory = userHistory;
+      return userHistory;
+    } catch (error) {
+      console.error('❌ Failed to fetch user history:', error);
+      return null;
     }
   }
 
@@ -475,12 +437,13 @@ export class ContractManager {
     };
   }
 
+  // FIXED: Extract transaction from response with better handling
   extractTransaction(response, txId) {
     console.log(`🔍 Extracting transaction ${txId}:`, response);
     
     const result = response?.result || response;
     
-    // Check for "none" response
+    // Check for "none" response (transaction doesn't exist)
     if (!result || result === 'none' || 
         (typeof result === 'string' && result.includes('none'))) {
       console.log(`⚠️ Transaction ${txId} is none/doesn't exist`);
@@ -511,6 +474,21 @@ export class ContractManager {
     return null;
   }
 
+  extractUserHistory(response) {
+    const result = response.result || response;
+    
+    if (typeof result === 'object' && result !== null) {
+      return {
+        user: this.extractValue(result.user, 'principal'),
+        tipCount: this.extractValue(result['tip-count'] || result.tipCount, 'uint'),
+        totalTipped: microToStx(this.extractValue(result['total-tipped'] || result.totalTipped, 'uint')),
+        lastTipHeight: this.extractValue(result['last-tip-height'] || result.lastTipHeight, 'uint')
+      };
+    }
+    
+    return null;
+  }
+
   async getBalance(network = CONFIG.NETWORK.DEFAULT, forceRefresh = false) {
     if (forceRefresh) this.clearCache();
     const data = await this.fetchContractData(network);
@@ -533,27 +511,14 @@ export class ContractManager {
     return data.userStats;
   }
 
-  // NEW: Get transaction history - tries Hiro API first, falls back to contract
+  // NEW: Get transaction history
   async getHistory(limit = 10, network = CONFIG.NETWORK.DEFAULT) {
-    console.log('📜 Getting transaction history...');
-    
-    // Try Hiro API first (works with all contracts)
-    try {
-      const history = await this.fetchTransactionHistory(network, limit);
-      if (history && history.length > 0) {
-        return history;
-      }
-    } catch (error) {
-      console.warn('⚠️ Hiro API fetch failed, trying contract storage:', error.message);
-    }
-    
-    // Fall back to contract storage (only works with tip-jar-v4)
-    try {
-      return await this.fetchTransactionHistoryFromContract(network, limit);
-    } catch (error) {
-      console.error('❌ Both methods failed:', error);
-      return [];
-    }
+    return await this.fetchTransactionHistory(network, limit);
+  }
+
+  // NEW: Get user history
+  async getUserHistory(userAddress, network = CONFIG.NETWORK.DEFAULT) {
+    return await this.fetchUserHistory(userAddress, network);
   }
 }
 
