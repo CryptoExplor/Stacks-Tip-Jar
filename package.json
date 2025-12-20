@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@stacks/transactions": "^6.13.0",
+    "@stacks/transactions": "^6.16.1",
     "buffer": "^6.0.3"
   },
   "devDependencies": {
