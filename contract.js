@@ -1,4 +1,5 @@
-// contract.js - FIXED VERSION with proper encoding and error handling
+// contract.js - MEMORY OPTIMIZED VERSION
+// Fixes: Reduced parallel API calls, better caching, memory leak prevention
 
 import { CONFIG, getNetworkEndpoint, microToStx } from './config.js';
 import { uintCV, cvToHex } from '@stacks/transactions';
@@ -16,7 +17,9 @@ export class ContractManager {
       history: null,
       userHistory: null
     };
-    this.cacheTimeout = 5000;
+    this.cacheTimeout = 10000; // Increased to 10 seconds
+    this.activeRequests = new Set(); // Track active requests
+    this.maxParallelRequests = 3; // Limit parallel requests
   }
 
   isCacheValid() {
@@ -134,21 +137,24 @@ export class ContractManager {
     }
   }
 
-  // FIXED: Use @stacks/transactions for proper encoding
   encodeClarityUint(value) {
     return cvToHex(uintCV(value));
   }
 
-  // Encode principal for contract calls
   encodePrincipal(address) {
-    // For read-only calls, we can use the simpler format
     return `0x0${Buffer.from(address, 'utf-8').toString('hex').padEnd(80, '0')}`;
   }
 
-  // FIXED: Better transaction history fetching
+  // OPTIMIZED: Sequential fetching with rate limiting
   async fetchTransactionHistory(network = CONFIG.NETWORK.DEFAULT, limit = 10) {
     console.log('📜 Fetching transaction history...');
     
+    // Return cached history if available and recent
+    if (this.cache.history && Date.now() - this.cache.lastUpdate < 30000) {
+      console.log('💾 Using cached history');
+      return this.cache.history;
+    }
+
     try {
       // Check if contract supports history
       let supportsHistory = true;
@@ -162,7 +168,6 @@ export class ContractManager {
 
       if (!supportsHistory) return [];
 
-      // Get total transaction count
       const totalResult = await this.callReadOnly('get-total-transactions', [], network);
       const total = this.extractValue(totalResult, 'uint');
       
@@ -173,28 +178,29 @@ export class ContractManager {
         return [];
       }
       
-      // Fetch the last N transactions
-      const start = Math.max(1, total - limit + 1);
+      // OPTIMIZED: Limit to max 5 transactions at a time to reduce memory
+      const actualLimit = Math.min(limit, 5);
+      const start = Math.max(1, total - actualLimit + 1);
       const transactions = [];
       
-      console.log(`🔄 Fetching transactions ${start} to ${total}...`);
+      console.log(`🔄 Fetching transactions ${start} to ${total} (${actualLimit} total)...`);
       
-      // Fetch in parallel for better performance
-      const fetchPromises = [];
+      // OPTIMIZED: Sequential fetching instead of parallel to reduce memory
       for (let i = total; i >= start && i > 0; i--) {
-        fetchPromises.push(this.fetchSingleTransaction(i, network));
-      }
-      
-      const results = await Promise.allSettled(fetchPromises);
-      
-      results.forEach((result, index) => {
-        if (result.status === 'fulfilled' && result.value) {
-          transactions.push(result.value);
-        } else {
-          const txId = total - index;
-          console.warn(`⚠️ Failed to fetch transaction ${txId}:`, result.reason);
+        try {
+          const tx = await this.fetchSingleTransaction(i, network);
+          if (tx) {
+            transactions.push(tx);
+          }
+          
+          // Small delay between requests to prevent rate limiting
+          if (i > start) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        } catch (error) {
+          console.warn(`⚠️ Failed to fetch transaction ${i}:`, error.message);
         }
-      });
+      }
       
       // Sort by txId descending (most recent first)
       transactions.sort((a, b) => b.txId - a.txId);
@@ -208,8 +214,15 @@ export class ContractManager {
     }
   }
 
-  // FIXED: Better single transaction fetching
   async fetchSingleTransaction(txId, network = CONFIG.NETWORK.DEFAULT) {
+    // Rate limiting check
+    if (this.activeRequests.size >= this.maxParallelRequests) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
+    const requestId = `tx-${txId}`;
+    this.activeRequests.add(requestId);
+
     try {
       console.log(`📄 Fetching transaction ${txId}...`);
       
@@ -231,6 +244,8 @@ export class ContractManager {
     } catch (error) {
       console.error(`❌ Failed to fetch transaction ${txId}:`, error);
       return null;
+    } finally {
+      this.activeRequests.delete(requestId);
     }
   }
 
@@ -267,8 +282,7 @@ export class ContractManager {
       arguments: functionArgs,
     };
 
-    console.log(`📡 Calling ${functionName} at ${url}`);
-    console.log(`📦 Arguments:`, functionArgs);
+    console.log(`📡 Calling ${functionName}`);
 
     try {
       const response = await fetch(url, {
@@ -280,11 +294,10 @@ export class ContractManager {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`❌ API error for ${functionName}:`, errorText);
-        throw new Error(`Contract call failed: ${response.status} - ${errorText}`);
+        throw new Error(`Contract call failed: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log(`✅ ${functionName} response:`, data);
       return data;
     } catch (error) {
       console.error(`❌ Error calling ${functionName}:`, error);
@@ -293,28 +306,19 @@ export class ContractManager {
   }
 
   decodeClarityHex(hexString, expectedType) {
-    console.log('🔍 Decoding Clarity hex:', hexString, 'Type:', expectedType);
-    
     if (!hexString || !hexString.startsWith('0x')) {
-      console.warn('⚠️ Invalid hex string');
       return null;
     }
 
     let hex = hexString.slice(2);
-    console.log('📦 Hex without prefix:', hex);
 
     if (expectedType === 'uint') {
       if (hex.startsWith('01')) {
         hex = hex.slice(2);
-        console.log('🔢 Value bytes:', hex);
-        
         try {
           const value = BigInt('0x' + hex);
-          const numValue = Number(value);
-          console.log('✅ Decoded uint128:', numValue);
-          return numValue;
+          return Number(value);
         } catch (e) {
-          console.error('❌ Failed to parse uint:', e);
           return 0;
         }
       }
@@ -322,11 +326,10 @@ export class ContractManager {
       try {
         const value = parseInt(hex, 16);
         if (isFinite(value) && !isNaN(value)) {
-          console.log('✅ Fallback parse:', value);
           return value;
         }
       } catch (e) {
-        console.error('❌ Fallback parse failed:', e);
+        return 0;
       }
       
       return 0;
@@ -341,7 +344,6 @@ export class ContractManager {
     if (expectedType === 'principal') {
       if (hex.startsWith('05') || hex.startsWith('06')) {
         if (this.cache.owner && (this.cache.owner.startsWith('ST') || this.cache.owner.startsWith('SP'))) {
-          console.log('✅ Using cached principal:', this.cache.owner);
           return this.cache.owner;
         }
         return '0x05' + hex;
@@ -354,7 +356,6 @@ export class ContractManager {
 
   extractValue(clarityResponse, expectedType = 'uint') {
     if (!clarityResponse) {
-      console.warn('⚠️ Empty response received');
       return expectedType === 'uint' ? 0 : expectedType === 'bool' ? false : null;
     }
 
@@ -363,8 +364,6 @@ export class ContractManager {
     if (result && typeof result === 'object' && result.result) {
       result = result.result;
     }
-
-    console.log('📦 Extracted result:', result);
 
     if (expectedType === 'uint') {
       if (typeof result === 'string') {
@@ -376,23 +375,19 @@ export class ContractManager {
         if (result.startsWith('u')) {
           const numStr = result.slice(1);
           const parsed = parseInt(numStr, 10);
-          console.log('✅ Parsed u-format:', parsed);
           return parsed;
         }
         
         const num = parseInt(result, 10);
         if (isFinite(num) && !isNaN(num)) {
-          console.log('✅ Direct parse:', num);
           return num;
         }
       }
       
       if (typeof result === 'number' && isFinite(result)) {
-        console.log('✅ Number value:', result);
         return result;
       }
 
-      console.warn('⚠️ Could not extract uint, returning 0');
       return 0;
     }
 
@@ -416,7 +411,6 @@ export class ContractManager {
         }
         
         if (principal.startsWith('ST') || principal.startsWith('SP')) {
-          console.log('✅ String principal:', principal);
           return principal;
         }
         
@@ -447,18 +441,13 @@ export class ContractManager {
     };
   }
 
-  // FIXED: Better transaction extraction with comprehensive error handling
   extractTransaction(response, txId) {
-    console.log(`🔍 Extracting transaction ${txId}:`, response);
-    
     let result = response?.result || response;
     
-    // Handle wrapped response
     if (result && typeof result === 'object' && result.result) {
       result = result.result;
     }
     
-    // Check for "none" or "(none)" responses
     if (!result || 
         result === 'none' || 
         (typeof result === 'string' && (
@@ -466,14 +455,11 @@ export class ContractManager {
           result.includes('(none)') ||
           result.toLowerCase().includes('none')
         ))) {
-      console.log(`⚠️ Transaction ${txId} doesn't exist`);
       return null;
     }
     
-    // Handle tuple response  
     if (typeof result === 'object' && result !== null) {
       try {
-        // Extract fields with all possible variations
         const tipper = result.tipper || result['tipper'];
         const amount = result.amount || result['amount'];
         const blockHeight = result['block-height'] || result.blockHeight || result['blockHeight'];
@@ -489,13 +475,10 @@ export class ContractManager {
           hasMessage: this.extractValue(hasMessage, 'bool')
         };
         
-        // Validate required fields
         if (!tx.tipper || tx.amount === 0) {
-          console.warn(`⚠️ Invalid transaction data for ${txId} - missing required fields`);
           return null;
         }
         
-        console.log(`✅ Extracted transaction ${txId}:`, tx);
         return tx;
       } catch (error) {
         console.error(`❌ Error extracting transaction ${txId}:`, error);
@@ -503,7 +486,6 @@ export class ContractManager {
       }
     }
     
-    console.warn(`⚠️ Unexpected response format for transaction ${txId}`);
     return null;
   }
 
@@ -551,6 +533,19 @@ export class ContractManager {
   async getUserHistory(userAddress, network = CONFIG.NETWORK.DEFAULT) {
     return await this.fetchUserHistory(userAddress, network);
   }
+
+  // Cleanup method to prevent memory leaks
+  cleanup() {
+    this.clearCache();
+    this.activeRequests.clear();
+  }
 }
 
 export const contractManager = new ContractManager();
+
+// Cleanup on page unload
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    contractManager.cleanup();
+  });
+}
