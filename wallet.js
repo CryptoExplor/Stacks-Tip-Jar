@@ -1,4 +1,4 @@
-// wallet.js - Wallet management with Clarity 4 message support
+// wallet.js - FIXED VERSION with persistent faucet cooldown
 import { CONFIG } from './config.js';
 import { uintCV, cvToHex, standardPrincipalCV, stringUtf8CV } from '@stacks/transactions';
 
@@ -13,6 +13,9 @@ export class WalletManager {
     
     // Load saved wallet state
     this.loadWalletState();
+    
+    // FIXED: Load faucet cooldown from localStorage
+    this.loadFaucetCooldown();
   }
 
   saveWalletState() {
@@ -68,6 +71,34 @@ export class WalletManager {
       console.log('🗑️ Cleared wallet state');
     } catch (err) {
       console.warn('⚠️ Could not clear wallet state', err);
+    }
+  }
+
+  // FIXED: Load and save faucet cooldown
+  loadFaucetCooldown() {
+    if (!this.address) return;
+    
+    try {
+      const key = `lastFaucetClaim_${this.address}`;
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        this.lastFaucetClaim = parseInt(saved, 10);
+        console.log('💾 Loaded faucet cooldown:', new Date(this.lastFaucetClaim));
+      }
+    } catch (error) {
+      console.warn('⚠️ Could not load faucet cooldown', error);
+    }
+  }
+
+  saveFaucetCooldown() {
+    if (!this.address || !this.lastFaucetClaim) return;
+    
+    try {
+      const key = `lastFaucetClaim_${this.address}`;
+      localStorage.setItem(key, this.lastFaucetClaim.toString());
+      console.log('💾 Saved faucet cooldown');
+    } catch (error) {
+      console.warn('⚠️ Could not save faucet cooldown', error);
     }
   }
 
@@ -151,7 +182,6 @@ export class WalletManager {
     return cvToHex(cv);
   }
 
-  // NEW: Encode string-utf8 for Clarity 4 messages
   encodeClarityString(str) {
     const cv = stringUtf8CV(str);
     return cvToHex(cv);
@@ -215,6 +245,7 @@ export class WalletManager {
       console.log('✅ Connected:', this.address);
       
       this.saveWalletState();
+      this.loadFaucetCooldown(); // FIXED: Load cooldown for new address
       this.notify();
 
       return {
@@ -264,6 +295,7 @@ export class WalletManager {
       console.log('✅ Connected:', this.address);
       
       this.saveWalletState();
+      this.loadFaucetCooldown(); // FIXED: Load cooldown for new address
       this.notify();
 
       return {
@@ -283,6 +315,7 @@ export class WalletManager {
     this.address = null;
     this.walletType = null;
     this.autoReconnected = false;
+    this.lastFaucetClaim = null; // FIXED: Clear cooldown on disconnect
     this.clearWalletState();
     this.notify();
   }
@@ -295,6 +328,7 @@ export class WalletManager {
     };
   }
 
+  // FIXED: Better faucet claim with persistent cooldown
   async claimFaucet() {
     console.log('💰 Attempting to claim from faucet...');
 
@@ -305,6 +339,9 @@ export class WalletManager {
     if (CONFIG.NETWORK.DEFAULT !== 'testnet') {
       throw new Error('Faucet is only available on testnet');
     }
+
+    // FIXED: Check cooldown from localStorage
+    this.loadFaucetCooldown();
 
     if (this.lastFaucetClaim) {
       const timeSince = Date.now() - this.lastFaucetClaim;
@@ -345,7 +382,10 @@ export class WalletManager {
       const data = await response.json();
       console.log('✅ Faucet response:', data);
 
+      // FIXED: Save cooldown to localStorage
       this.lastFaucetClaim = Date.now();
+      this.saveFaucetCooldown();
+
       const txId = data.txId || data.txid;
 
       return {
@@ -359,10 +399,14 @@ export class WalletManager {
     }
   }
 
+  // FIXED: Check cooldown with localStorage
   canClaimFaucet() {
     if (!this.address || CONFIG.NETWORK.DEFAULT !== 'testnet') {
       return { canClaim: false, reason: 'Not connected or not on testnet' };
     }
+
+    // FIXED: Always check localStorage
+    this.loadFaucetCooldown();
 
     if (this.lastFaucetClaim) {
       const timeSince = Date.now() - this.lastFaucetClaim;
@@ -407,7 +451,6 @@ export class WalletManager {
     }
   }
 
-  // NEW: Send tip with message (Clarity 4 feature)
   async sendTipWithMessage(amount, message) {
     console.log('💬 Attempting to send tip with message:', amount, 'STX');
     console.log('📝 Message:', message);
@@ -421,7 +464,6 @@ export class WalletManager {
     }
 
     if (!message || message.length === 0) {
-      // Fall back to regular tip if no message
       return await this.sendTip(amount);
     }
 
@@ -497,7 +539,6 @@ export class WalletManager {
     }
   }
 
-  // NEW: Send tip with message via Leather
   async sendTipWithMessageLeather(microAmount, message) {
     console.log('🦊 Sending with message via Leather...');
 
@@ -593,7 +634,6 @@ export class WalletManager {
     }
   }
 
-  // NEW: Send tip with message via Xverse
   async sendTipWithMessageXverse(microAmount, message) {
     console.log('⚡ Sending with message via Xverse...');
 
