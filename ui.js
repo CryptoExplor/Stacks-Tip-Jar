@@ -1,4 +1,4 @@
-// ui.js - UI controller with transaction history support
+// ui.js - FIXED VERSION with premium status, history support, and better error handling
 import { CONFIG, formatStx, isFaucetAvailable, getClarity4Features, shortAddress } from './config.js';
 import { walletManager } from './wallet.js';
 import { contractManager } from './contract.js';
@@ -12,7 +12,8 @@ export class UIController {
       stats: null,
       hasMessage: false,
       history: [],
-      historyLimit: 10
+      historyLimit: 10,
+      supportsHistory: true // Will be checked on init
     };
     this.faucetTimer = null;
   }
@@ -29,6 +30,11 @@ export class UIController {
     
     this.updateFaucetVisibility();
     this.showClarity4Features();
+    
+    // FIXED: Initialize character counter
+    if (this.elements.charCount) {
+      this.elements.charCount.textContent = '0';
+    }
     
     console.log('✅ UI initialized');
   }
@@ -53,6 +59,7 @@ export class UIController {
       walletAddress: document.getElementById('walletAddress'),
       walletBadge: document.getElementById('walletBadge'),
       installNotice: document.getElementById('installNotice'),
+      premiumStatus: document.getElementById('premiumStatus'),
 
       // Tip sending
       amountInput: document.getElementById('amount'),
@@ -68,7 +75,14 @@ export class UIController {
       totalTips: document.getElementById('totalTips'),
       totalTippers: document.getElementById('totalTippers'),
       totalTransactions: document.getElementById('totalTransactions'),
+      userStatsRow: document.getElementById('userStatsRow'),
+      userTotalTips: document.getElementById('userTotalTips'),
       refreshBtn: document.getElementById('refreshBtn'),
+
+      // Premium
+      premiumInfo: document.getElementById('premiumInfo'),
+      premiumProgress: document.getElementById('premiumProgress'),
+      premiumProgressText: document.getElementById('premiumProgressText'),
 
       // History
       historySection: document.getElementById('historySection'),
@@ -137,10 +151,30 @@ export class UIController {
     });
   }
 
+  // FIXED: Fetch user stats and update premium status
   subscribeToWallet() {
-    walletManager.subscribe(walletState => {
+    walletManager.subscribe(async walletState => {
       console.log('👛 Wallet state changed:', walletState);
       this.state.connected = walletState.connected;
+      
+      // FIXED: Fetch user stats including premium status
+      if (walletState.connected && walletState.address) {
+        try {
+          const stats = await contractManager.getUserStats(walletState.address);
+          if (stats) {
+            walletState.isPremium = stats.isPremium || false;
+            walletState.userStats = stats;
+            console.log('👤 Fetched user stats:', stats);
+            
+            // Update premium info
+            this.updatePremiumInfo(stats);
+          }
+        } catch (error) {
+          console.error('Failed to fetch user stats:', error);
+          walletState.isPremium = false;
+        }
+      }
+      
       this.updateWalletUI(walletState);
       this.updateFaucetButton();
       
@@ -148,6 +182,34 @@ export class UIController {
         this.loadHistory();
       }
     });
+  }
+
+  // FIXED: Update premium progress display
+  updatePremiumInfo(stats) {
+    if (!stats || !this.elements.premiumInfo) return;
+    
+    const threshold = 10; // 10 STX premium threshold
+    const current = stats.totalTipped || 0;
+    const isPremium = stats.isPremium || false;
+    
+    if (isPremium) {
+      // Hide progress, already premium
+      this.elements.premiumInfo.style.display = 'none';
+    } else {
+      // Show progress
+      this.elements.premiumInfo.style.display = 'block';
+      
+      const percentage = Math.min((current / threshold) * 100, 100);
+      
+      if (this.elements.premiumProgress) {
+        this.elements.premiumProgress.style.width = `${percentage}%`;
+      }
+      
+      if (this.elements.premiumProgressText) {
+        this.elements.premiumProgressText.textContent = 
+          `${current.toFixed(2)} / ${threshold} STX`;
+      }
+    }
   }
 
   checkWalletAvailability() {
@@ -174,12 +236,30 @@ export class UIController {
   async loadInitialData() {
     console.log('📊 Loading initial data...');
     await this.refreshStats();
+    await this.checkHistorySupport();
     await this.loadHistory();
 
     if (this.elements.networkDisplay) {
       const network = CONFIG.NETWORK.DEFAULT;
       this.elements.networkDisplay.textContent =
         network.charAt(0).toUpperCase() + network.slice(1);
+    }
+  }
+
+  // FIXED: Check if contract supports transaction history
+  async checkHistorySupport() {
+    try {
+      await contractManager.callReadOnly('get-total-transactions', [], CONFIG.NETWORK.DEFAULT);
+      this.state.supportsHistory = true;
+      console.log('✅ Contract supports transaction history');
+    } catch (error) {
+      this.state.supportsHistory = false;
+      console.log('⚠️ Contract does not support transaction history');
+      
+      // Hide history section if not supported
+      if (this.elements.historySection) {
+        this.elements.historySection.style.display = 'none';
+      }
     }
   }
 
@@ -262,11 +342,19 @@ export class UIController {
     this.faucetTimer = setInterval(updateButton, 1000);
   }
 
-  // NEW: Load transaction history
+  // FIXED: Better history loading with support check
   async loadHistory() {
     console.log('📜 Loading transaction history...');
     
     if (!this.elements.historyList) return;
+    
+    // Check if history is supported
+    if (!this.state.supportsHistory) {
+      console.log('⚠️ History not supported by contract');
+      this.elements.historyList.innerHTML = 
+        '<div class="history-empty">Transaction history not available with this contract version</div>';
+      return;
+    }
     
     this.elements.historyList.innerHTML = '<div class="history-loading">Loading transaction history...</div>';
     
@@ -278,6 +366,11 @@ export class UIController {
         this.elements.historyList.innerHTML = '<div class="history-empty">No tips yet. Be the first to send one! 🚀</div>';
       } else {
         this.renderHistory(history);
+        
+        // Show load more button if there might be more
+        if (this.elements.loadMoreBtn && history.length === this.state.historyLimit) {
+          this.elements.loadMoreBtn.style.display = 'block';
+        }
       }
     } catch (error) {
       console.error('❌ Failed to load history:', error);
@@ -285,7 +378,6 @@ export class UIController {
     }
   }
 
-  // NEW: Render history items
   renderHistory(transactions) {
     if (!this.elements.historyList) return;
     
@@ -297,7 +389,6 @@ export class UIController {
     });
   }
 
-  // NEW: Create a single history item
   createHistoryItem(tx) {
     const item = document.createElement('div');
     item.className = 'history-item';
@@ -353,7 +444,6 @@ export class UIController {
     return item;
   }
 
-  // NEW: Refresh history
   async refreshHistory() {
     console.log('🔄 Refreshing history...');
     
@@ -370,7 +460,6 @@ export class UIController {
     }
   }
 
-  // NEW: Load more history
   async loadMoreHistory() {
     this.state.historyLimit += 10;
     await this.loadHistory();
@@ -433,6 +522,7 @@ export class UIController {
     }
   }
 
+  // FIXED: Update wallet UI with premium status display
   updateWalletUI(walletState) {
     const isOwner = walletState.address === CONFIG.CONTRACT.OWNER;
 
@@ -447,6 +537,23 @@ export class UIController {
         this.elements.walletBadge.textContent = isOwner
           ? `${badge} • Owner`
           : badge;
+      }
+
+      // FIXED: Show/hide premium status
+      if (this.elements.premiumStatus) {
+        if (walletState.isPremium) {
+          this.elements.premiumStatus.style.display = 'flex';
+        } else {
+          this.elements.premiumStatus.style.display = 'none';
+        }
+      }
+
+      // FIXED: Show user stats if available
+      if (walletState.userStats && this.elements.userStatsRow) {
+        this.elements.userStatsRow.style.display = 'flex';
+        if (this.elements.userTotalTips) {
+          this.elements.userTotalTips.textContent = formatStx(walletState.userStats.totalTipped);
+        }
       }
 
       this.elements.walletInfo?.classList.add('show');
@@ -465,6 +572,14 @@ export class UIController {
 
       if (this.elements.withdrawBtn) {
         this.elements.withdrawBtn.style.display = 'none';
+      }
+      
+      if (this.elements.premiumStatus) {
+        this.elements.premiumStatus.style.display = 'none';
+      }
+      
+      if (this.elements.userStatsRow) {
+        this.elements.userStatsRow.style.display = 'none';
       }
     }
   }
@@ -642,7 +757,8 @@ export class UIController {
     this.showStatus('Refreshing stats...', 'info');
 
     try {
-      const stats = await contractManager.getStats(CONFIG.NETWORK.DEFAULT, true);
+      const userAddress = walletManager.address;
+      const stats = await contractManager.getStats(CONFIG.NETWORK.DEFAULT, true, userAddress);
       console.log('📊 Stats:', stats);
       this.state.stats = stats;
 
@@ -657,6 +773,18 @@ export class UIController {
       }
       if (this.elements.totalTransactions) {
         this.elements.totalTransactions.textContent = stats.totalTransactions || 0;
+      }
+
+      // Update user stats if available
+      if (stats.userStats) {
+        this.updatePremiumInfo(stats.userStats);
+        
+        if (this.elements.userStatsRow) {
+          this.elements.userStatsRow.style.display = 'flex';
+        }
+        if (this.elements.userTotalTips) {
+          this.elements.userTotalTips.textContent = formatStx(stats.userStats.totalTipped || 0);
+        }
       }
 
       this.showStatus('Stats updated', 'success');
