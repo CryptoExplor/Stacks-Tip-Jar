@@ -21,9 +21,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   
-  <!-- FIXED: Favicon path and type -->
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="apple-touch-icon" href="/favicon.svg" />
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="/favicon.svg" />
+  <link rel="apple-touch-icon" href="/icon.png" />
   
   <!-- Styles -->
   <link rel="stylesheet" href="/styles.css" />
@@ -32,7 +32,7 @@
   <div class="container">
     <header class="header">
       <div class="header-logo">
-        <img src="/favicon.svg" alt="Stacks Tip Jar" class="logo-icon" />
+        <img src="/icon.png" alt="Stacks Tip Jar" class="logo-icon" />
         <h1>Stacks Tip Jar</h1>
         <span class="clarity4-badge">Clarity 4</span>
       </div>
@@ -46,7 +46,6 @@
         <span class="wallet-badge" id="walletBadge"></span>
       </div>
       <div class="wallet-address" id="walletAddress"></div>
-      <!-- FIXED: Premium status section -->
       <div class="premium-status" id="premiumStatus" style="display: none;">
         <span class="premium-icon">👑</span>
         <span class="premium-text">Premium Tipper</span>
@@ -75,7 +74,6 @@
         <span class="stat-label">Total Transactions:</span>
         <span class="stat-value" id="totalTransactions">--</span>
       </div>
-      <!-- FIXED: User stats row -->
       <div class="stat-row" id="userStatsRow" style="display: none;">
         <span class="stat-label">Your Total Tips:</span>
         <span class="stat-value" id="userTotalTips">--</span>
@@ -172,7 +170,7 @@
         <span id="sendTipBtnText">Send Tip</span>
       </button>
 
-      <!-- FIXED: Premium Achievement Section -->
+      <!-- Premium Achievement -->
       <div class="premium-info" id="premiumInfo" style="display: none;">
         <p>🎯 Tip 10+ STX total to become a Premium Tipper!</p>
         <div class="progress-bar">

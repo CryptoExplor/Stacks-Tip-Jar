@@ -1,6 +1,4 @@
-// ui.js - MEMORY OPTIMIZED VERSION
-// Fixes: Disabled auto-refresh on history, reduced polling, better cleanup
-
+// ui.js - UI controller with transaction history support
 import { CONFIG, formatStx, isFaucetAvailable, getClarity4Features, shortAddress } from './config.js';
 import { walletManager } from './wallet.js';
 import { contractManager } from './contract.js';
@@ -14,11 +12,9 @@ export class UIController {
       stats: null,
       hasMessage: false,
       history: [],
-      historyLimit: 5, // OPTIMIZED: Reduced from 10 to 5
-      supportsHistory: true
+      historyLimit: 10
     };
     this.faucetTimer = null;
-    this.refreshTimers = []; // Track all timers for cleanup
   }
 
   async init() {
@@ -34,10 +30,6 @@ export class UIController {
     this.updateFaucetVisibility();
     this.showClarity4Features();
     
-    if (this.elements.charCount) {
-      this.elements.charCount.textContent = '0';
-    }
-    
     console.log('✅ UI initialized');
   }
 
@@ -51,6 +43,7 @@ export class UIController {
 
   cacheElements() {
     this.elements = {
+      // Wallet connection
       leatherBtn: document.getElementById('leatherBtn'),
       xverseBtn: document.getElementById('xverseBtn'),
       disconnectBtn: document.getElementById('disconnectBtn'),
@@ -60,46 +53,62 @@ export class UIController {
       walletAddress: document.getElementById('walletAddress'),
       walletBadge: document.getElementById('walletBadge'),
       installNotice: document.getElementById('installNotice'),
-      premiumStatus: document.getElementById('premiumStatus'),
+
+      // Tip sending
       amountInput: document.getElementById('amount'),
       messageInput: document.getElementById('message'),
       charCount: document.getElementById('charCount'),
       sendTipBtn: document.getElementById('sendTipBtn'),
       sendTipBtnText: document.getElementById('sendTipBtnText'),
       quickAmounts: document.querySelectorAll('.quick-amount'),
+
+      // Stats
       networkDisplay: document.getElementById('networkDisplay'),
       contractBalance: document.getElementById('contractBalance'),
       totalTips: document.getElementById('totalTips'),
       totalTippers: document.getElementById('totalTippers'),
       totalTransactions: document.getElementById('totalTransactions'),
-      userStatsRow: document.getElementById('userStatsRow'),
-      userTotalTips: document.getElementById('userTotalTips'),
       refreshBtn: document.getElementById('refreshBtn'),
-      premiumInfo: document.getElementById('premiumInfo'),
-      premiumProgress: document.getElementById('premiumProgress'),
-      premiumProgressText: document.getElementById('premiumProgressText'),
+
+      // History
       historySection: document.getElementById('historySection'),
       historyList: document.getElementById('historyList'),
       refreshHistoryBtn: document.getElementById('refreshHistoryBtn'),
       loadMoreBtn: document.getElementById('loadMoreBtn'),
+
+      // Owner-only withdraw
       withdrawBtn: document.getElementById('withdrawBtn'),
+
+      // Faucet
       faucetBtn: document.getElementById('faucetBtn'),
       faucetSection: document.getElementById('faucetSection'),
+
+      // Status
       status: document.getElementById('status'),
     };
   }
 
   attachEventListeners() {
+    // Wallet connection buttons
     this.elements.leatherBtn?.addEventListener('click', () => this.connectLeather());
     this.elements.xverseBtn?.addEventListener('click', () => this.connectXverse());
     this.elements.disconnectBtn?.addEventListener('click', () => this.disconnect());
+
+    // Tip sending
     this.elements.sendTipBtn?.addEventListener('click', () => this.sendTip());
     this.elements.refreshBtn?.addEventListener('click', () => this.refreshStats());
+
+    // History
     this.elements.refreshHistoryBtn?.addEventListener('click', () => this.refreshHistory());
     this.elements.loadMoreBtn?.addEventListener('click', () => this.loadMoreHistory());
+
+    // Withdraw
     this.elements.withdrawBtn?.addEventListener('click', () => this.withdraw());
+
+    // Faucet
     this.elements.faucetBtn?.addEventListener('click', () => this.claimFaucet());
 
+    // Quick amount buttons
     this.elements.quickAmounts.forEach(btn => {
       btn.addEventListener('click', e => {
         const amount = e.target.dataset.amount;
@@ -109,6 +118,7 @@ export class UIController {
       });
     });
 
+    // Message character counter
     this.elements.messageInput?.addEventListener('input', e => {
       const length = e.target.value.length;
       if (this.elements.charCount) {
@@ -119,6 +129,7 @@ export class UIController {
       this.updateSendButton();
     });
 
+    // Enter key on amount input
     this.elements.amountInput?.addEventListener('keypress', e => {
       if (e.key === 'Enter') {
         this.sendTip();
@@ -127,25 +138,9 @@ export class UIController {
   }
 
   subscribeToWallet() {
-    walletManager.subscribe(async walletState => {
+    walletManager.subscribe(walletState => {
       console.log('👛 Wallet state changed:', walletState);
       this.state.connected = walletState.connected;
-      
-      if (walletState.connected && walletState.address) {
-        try {
-          const stats = await contractManager.getUserStats(walletState.address);
-          if (stats) {
-            walletState.isPremium = stats.isPremium || false;
-            walletState.userStats = stats;
-            console.log('👤 Fetched user stats:', stats);
-            this.updatePremiumInfo(stats);
-          }
-        } catch (error) {
-          console.error('Failed to fetch user stats:', error);
-          walletState.isPremium = false;
-        }
-      }
-      
       this.updateWalletUI(walletState);
       this.updateFaucetButton();
       
@@ -153,30 +148,6 @@ export class UIController {
         this.loadHistory();
       }
     });
-  }
-
-  updatePremiumInfo(stats) {
-    if (!stats || !this.elements.premiumInfo) return;
-    
-    const threshold = 10;
-    const current = stats.totalTipped || 0;
-    const isPremium = stats.isPremium || false;
-    
-    if (isPremium) {
-      this.elements.premiumInfo.style.display = 'none';
-    } else {
-      this.elements.premiumInfo.style.display = 'block';
-      const percentage = Math.min((current / threshold) * 100, 100);
-      
-      if (this.elements.premiumProgress) {
-        this.elements.premiumProgress.style.width = `${percentage}%`;
-      }
-      
-      if (this.elements.premiumProgressText) {
-        this.elements.premiumProgressText.textContent = 
-          `${current.toFixed(2)} / ${threshold} STX`;
-      }
-    }
   }
 
   checkWalletAvailability() {
@@ -203,28 +174,12 @@ export class UIController {
   async loadInitialData() {
     console.log('📊 Loading initial data...');
     await this.refreshStats();
-    await this.checkHistorySupport();
     await this.loadHistory();
 
     if (this.elements.networkDisplay) {
       const network = CONFIG.NETWORK.DEFAULT;
       this.elements.networkDisplay.textContent =
         network.charAt(0).toUpperCase() + network.slice(1);
-    }
-  }
-
-  async checkHistorySupport() {
-    try {
-      await contractManager.callReadOnly('get-total-transactions', [], CONFIG.NETWORK.DEFAULT);
-      this.state.supportsHistory = true;
-      console.log('✅ Contract supports transaction history');
-    } catch (error) {
-      this.state.supportsHistory = false;
-      console.log('⚠️ Contract does not support transaction history');
-      
-      if (this.elements.historySection) {
-        this.elements.historySection.style.display = 'none';
-      }
     }
   }
 
@@ -307,18 +262,11 @@ export class UIController {
     this.faucetTimer = setInterval(updateButton, 1000);
   }
 
-  // OPTIMIZED: Simpler history loading
+  // NEW: Load transaction history
   async loadHistory() {
     console.log('📜 Loading transaction history...');
     
     if (!this.elements.historyList) return;
-    
-    if (!this.state.supportsHistory) {
-      console.log('⚠️ History not supported by contract');
-      this.elements.historyList.innerHTML = 
-        '<div class="history-empty">Transaction history not available with this contract version</div>';
-      return;
-    }
     
     this.elements.historyList.innerHTML = '<div class="history-loading">Loading transaction history...</div>';
     
@@ -330,10 +278,6 @@ export class UIController {
         this.elements.historyList.innerHTML = '<div class="history-empty">No tips yet. Be the first to send one! 🚀</div>';
       } else {
         this.renderHistory(history);
-        
-        if (this.elements.loadMoreBtn && history.length === this.state.historyLimit) {
-          this.elements.loadMoreBtn.style.display = 'block';
-        }
       }
     } catch (error) {
       console.error('❌ Failed to load history:', error);
@@ -341,6 +285,7 @@ export class UIController {
     }
   }
 
+  // NEW: Render history items
   renderHistory(transactions) {
     if (!this.elements.historyList) return;
     
@@ -352,6 +297,7 @@ export class UIController {
     });
   }
 
+  // NEW: Create a single history item
   createHistoryItem(tx) {
     const item = document.createElement('div');
     item.className = 'history-item';
@@ -373,6 +319,7 @@ export class UIController {
     const meta = document.createElement('div');
     meta.className = 'history-item-meta';
     
+    // Block height
     const blockMeta = document.createElement('div');
     blockMeta.className = 'history-item-meta-item';
     blockMeta.innerHTML = `
@@ -381,6 +328,7 @@ export class UIController {
     `;
     meta.appendChild(blockMeta);
     
+    // Transaction ID
     const txMeta = document.createElement('div');
     txMeta.className = 'history-item-meta-item';
     txMeta.innerHTML = `
@@ -389,6 +337,7 @@ export class UIController {
     `;
     meta.appendChild(txMeta);
     
+    // Has message badge
     if (tx.hasMessage) {
       const messageMeta = document.createElement('div');
       messageMeta.className = 'history-item-meta-item';
@@ -404,6 +353,7 @@ export class UIController {
     return item;
   }
 
+  // NEW: Refresh history
   async refreshHistory() {
     console.log('🔄 Refreshing history...');
     
@@ -412,7 +362,6 @@ export class UIController {
     }
     
     try {
-      contractManager.clearCache(); // Force fresh data
       await this.loadHistory();
     } finally {
       if (this.elements.refreshHistoryBtn) {
@@ -421,8 +370,9 @@ export class UIController {
     }
   }
 
+  // NEW: Load more history
   async loadMoreHistory() {
-    this.state.historyLimit += 5; // OPTIMIZED: Load 5 more at a time
+    this.state.historyLimit += 10;
     await this.loadHistory();
   }
 
@@ -471,9 +421,12 @@ export class UIController {
     walletManager.disconnect();
     this.showStatus('Wallet disconnected', 'info');
     
-    // OPTIMIZED: Clear all timers
-    this.clearAllTimers();
+    if (this.faucetTimer) {
+      clearInterval(this.faucetTimer);
+      this.faucetTimer = null;
+    }
     
+    // Clear history
     this.state.history = [];
     if (this.elements.historyList) {
       this.elements.historyList.innerHTML = '<div class="history-empty">Connect wallet to view history</div>';
@@ -496,21 +449,6 @@ export class UIController {
           : badge;
       }
 
-      if (this.elements.premiumStatus) {
-        if (walletState.isPremium) {
-          this.elements.premiumStatus.style.display = 'flex';
-        } else {
-          this.elements.premiumStatus.style.display = 'none';
-        }
-      }
-
-      if (walletState.userStats && this.elements.userStatsRow) {
-        this.elements.userStatsRow.style.display = 'flex';
-        if (this.elements.userTotalTips) {
-          this.elements.userTotalTips.textContent = formatStx(walletState.userStats.totalTipped);
-        }
-      }
-
       this.elements.walletInfo?.classList.add('show');
       this.elements.connectSection?.classList.remove('show');
       this.elements.tipSection?.classList.add('show');
@@ -527,14 +465,6 @@ export class UIController {
 
       if (this.elements.withdrawBtn) {
         this.elements.withdrawBtn.style.display = 'none';
-      }
-      
-      if (this.elements.premiumStatus) {
-        this.elements.premiumStatus.style.display = 'none';
-      }
-      
-      if (this.elements.userStatsRow) {
-        this.elements.userStatsRow.style.display = 'none';
       }
     }
   }
@@ -564,10 +494,7 @@ export class UIController {
       );
 
       this.updateFaucetButton();
-      
-      // OPTIMIZED: Single delayed refresh
-      const timer = setTimeout(() => this.refreshStats(), 10000);
-      this.refreshTimers.push(timer);
+      setTimeout(() => this.refreshStats(), 10000);
     } catch (error) {
       console.error('❌ Faucet claim failed:', error);
       
@@ -629,6 +556,7 @@ export class UIController {
 
       this.showStatus(successMsg, 'success');
 
+      // Clear inputs
       if (this.elements.amountInput) {
         this.elements.amountInput.value = '';
       }
@@ -642,11 +570,10 @@ export class UIController {
       this.updateSendButton();
 
       contractManager.clearCache();
-      
-      // OPTIMIZED: Reduced refresh frequency
-      const timer1 = setTimeout(() => this.refreshStats(), 5000);
-      const timer2 = setTimeout(() => this.refreshHistory(), 10000);
-      this.refreshTimers.push(timer1, timer2);
+      setTimeout(() => this.refreshStats(), 3000);
+      setTimeout(() => this.refreshHistory(), 5000);
+      setTimeout(() => this.refreshStats(), 10000);
+      setTimeout(() => this.refreshHistory(), 15000);
     } catch (error) {
       console.error('❌ Send tip failed:', error);
       if (error.message && error.message.toLowerCase().includes('cancel')) {
@@ -694,8 +621,7 @@ export class UIController {
 
       this.showStatus(`Withdrawal sent! TX: ${shortTxId} - Memo stored on-chain`, 'success');
 
-      const timer = setTimeout(() => this.refreshStats(), CONFIG.TX.POLLING_INTERVAL);
-      this.refreshTimers.push(timer);
+      setTimeout(() => this.refreshStats(), CONFIG.TX.POLLING_INTERVAL);
     } catch (error) {
       console.error('❌ Withdraw failed:', error);
       if (error.message && error.message.toLowerCase().includes('cancel')) {
@@ -716,8 +642,7 @@ export class UIController {
     this.showStatus('Refreshing stats...', 'info');
 
     try {
-      const userAddress = walletManager.address;
-      const stats = await contractManager.getStats(CONFIG.NETWORK.DEFAULT, true, userAddress);
+      const stats = await contractManager.getStats(CONFIG.NETWORK.DEFAULT, true);
       console.log('📊 Stats:', stats);
       this.state.stats = stats;
 
@@ -732,17 +657,6 @@ export class UIController {
       }
       if (this.elements.totalTransactions) {
         this.elements.totalTransactions.textContent = stats.totalTransactions || 0;
-      }
-
-      if (stats.userStats) {
-        this.updatePremiumInfo(stats.userStats);
-        
-        if (this.elements.userStatsRow) {
-          this.elements.userStatsRow.style.display = 'flex';
-        }
-        if (this.elements.userTotalTips) {
-          this.elements.userTotalTips.textContent = formatStx(stats.userStats.totalTipped || 0);
-        }
       }
 
       this.showStatus('Stats updated', 'success');
@@ -767,10 +681,9 @@ export class UIController {
     this.elements.status.className = `status show ${type}`;
 
     if (type === 'success' || type === 'info') {
-      const timer = setTimeout(() => {
+      setTimeout(() => {
         this.elements.status.classList.remove('show');
       }, 5000);
-      this.refreshTimers.push(timer);
     }
   }
 
@@ -798,30 +711,6 @@ export class UIController {
       setTimeout(() => this.updateFaucetButton(), 100);
     }
   }
-
-  // OPTIMIZED: Cleanup timers to prevent memory leaks
-  clearAllTimers() {
-    if (this.faucetTimer) {
-      clearInterval(this.faucetTimer);
-      this.faucetTimer = null;
-    }
-    
-    this.refreshTimers.forEach(timer => clearTimeout(timer));
-    this.refreshTimers = [];
-  }
-
-  // Cleanup on destruction
-  cleanup() {
-    this.clearAllTimers();
-    contractManager.cleanup();
-  }
 }
 
 export const uiController = new UIController();
-
-// Cleanup on page unload
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', () => {
-    uiController.cleanup();
-  });
-}
