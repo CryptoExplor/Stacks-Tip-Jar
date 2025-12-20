@@ -263,27 +263,49 @@ export class UIController {
   }
 
   // NEW: Load transaction history
-  async loadHistory() {
-    console.log('📜 Loading transaction history...');
+// Partial ui.js fix for loadHistory function
+
+async loadHistory() {
+  console.log('📜 Loading transaction history...');
+  
+  if (!this.elements.historyList) return;
+  
+  this.elements.historyList.innerHTML = '<div class="history-loading">Loading transaction history...</div>';
+  
+  try {
+    // First check if there are any transactions
+    const stats = await contractManager.getStats(CONFIG.NETWORK.DEFAULT, false);
     
-    if (!this.elements.historyList) return;
-    
-    this.elements.historyList.innerHTML = '<div class="history-loading">Loading transaction history...</div>';
-    
-    try {
-      const history = await contractManager.getHistory(this.state.historyLimit);
-      this.state.history = history;
-      
-      if (history.length === 0) {
-        this.elements.historyList.innerHTML = '<div class="history-empty">No tips yet. Be the first to send one! 🚀</div>';
-      } else {
-        this.renderHistory(history);
-      }
-    } catch (error) {
-      console.error('❌ Failed to load history:', error);
-      this.elements.historyList.innerHTML = '<div class="history-empty">Failed to load transaction history</div>';
+    if (stats.totalTransactions === 0) {
+      console.log('ℹ️ No transactions in contract yet');
+      this.elements.historyList.innerHTML = '<div class="history-empty">No tips yet. Be the first to send one! 🚀</div>';
+      return;
     }
+    
+    console.log(`📊 Contract has ${stats.totalTransactions} transactions, fetching...`);
+    
+    const history = await contractManager.getHistory(this.state.historyLimit);
+    this.state.history = history;
+    
+    if (history.length === 0) {
+      // Contract doesn't support transaction history
+      this.elements.historyList.innerHTML = `
+        <div class="history-empty">
+          <p>📊 Transaction history not available</p>
+          <p style="font-size: 12px; margin-top: 8px; opacity: 0.8;">
+            This contract version doesn't support transaction history.<br/>
+            Deploy <code>tip-jar-v4.clar</code> to enable this feature.
+          </p>
+        </div>
+      `;
+    } else {
+      this.renderHistory(history);
+    }
+  } catch (error) {
+    console.error('❌ Failed to load history:', error);
+    this.elements.historyList.innerHTML = '<div class="history-empty">Failed to load transaction history. Please try again.</div>';
   }
+}
 
   // NEW: Render history items
   renderHistory(transactions) {
