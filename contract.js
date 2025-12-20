@@ -1,4 +1,4 @@
-// contract.js - Fixed transaction history fetching
+// contract.js - Fixed balance display and transaction history
 
 import { CONFIG, getNetworkEndpoint, microToStx } from './config.js';
 
@@ -132,7 +132,6 @@ export class ContractManager {
     }
   }
 
-  // FIXED: Transaction history fetching with proper error handling
   async fetchTransactionHistory(network = CONFIG.NETWORK.DEFAULT, limit = 10) {
     console.log('📜 Fetching transaction history...');
     
@@ -175,7 +174,6 @@ export class ContractManager {
           }
         } catch (error) {
           console.warn(`❌ Failed to fetch transaction ${i}:`, error);
-          // Continue to next transaction
         }
       }
       
@@ -228,74 +226,63 @@ export class ContractManager {
     return `0x${Buffer.from(address).toString('hex')}`;
   }
 
-  // FIXED: Better uint encoding
   encodeClarityUint(value) {
-    // Ensure we have a proper uint representation
-    const numValue = BigInt(value);
-    const hex = numValue.toString(16).padStart(32, '0');
-    // Clarity uint prefix: 0x01 (uint type indicator)
+    // Convert to hex string, padded to 16 bytes (128 bits)
+    const hex = BigInt(value).toString(16).padStart(32, '0');
+    // Clarity uint type indicator: 0x01
     return `0x01${hex}`;
   }
 
-  // FIXED: Better transaction extraction
-  extractTransaction(response, txId) {
-    console.log('🔍 Extracting transaction from:', response);
+  decodeClarityHex(hexString, expectedType) {
+    console.log('🔍 Decoding Clarity hex:', hexString, 'Type:', expectedType);
     
-    if (!response || !response.result) {
-      console.warn('⚠️ No result in response');
+    if (!hexString || !hexString.startsWith('0x')) {
+      console.warn('⚠️ Invalid hex string');
       return null;
     }
-    
-    const result = response.result;
-    
-    // Handle optional type (none)
-    if (result === 'none' || result.type === 'none') {
-      console.log('ℹ️ Transaction returned none (optional empty)');
-      return null;
-    }
-    
-    // Handle optional type (some)
-    let txData = result;
-    if (result.type === 'some' && result.value) {
-      txData = result.value;
-      console.log('📦 Unwrapped optional value:', txData);
-    }
-    
-    // Extract tuple fields
-    if (typeof txData === 'object' && txData !== null) {
+
+    let hex = hexString.slice(2);
+    console.log('📦 Hex without prefix:', hex);
+
+    if (expectedType === 'uint') {
+      // Remove type prefix if present (01 for uint)
+      if (hex.startsWith('01')) {
+        hex = hex.slice(2);
+      }
+      
+      console.log('🔢 Value bytes:', hex);
+      
       try {
-        const transaction = {
-          txId: txId,
-          tipper: this.extractTupleField(txData, 'tipper', 'principal'),
-          amount: microToStx(this.extractTupleField(txData, 'amount', 'uint')),
-          blockHeight: this.extractTupleField(txData, 'block-height', 'uint'),
-          timestamp: this.extractTupleField(txData, 'timestamp', 'uint'),
-          hasMessage: this.extractTupleField(txData, 'has-message', 'bool')
-        };
-        
-        console.log('✅ Extracted transaction:', transaction);
-        return transaction;
-      } catch (error) {
-        console.error('❌ Error extracting transaction fields:', error);
-        return null;
+        // Parse as BigInt to handle large numbers
+        const value = BigInt('0x' + hex);
+        // Convert to regular number for amounts we expect
+        const numValue = Number(value);
+        console.log('✅ Decoded uint:', numValue);
+        return numValue;
+      } catch (e) {
+        console.error('❌ Failed to parse uint:', e);
+        return 0;
       }
     }
-    
-    console.warn('⚠️ Unexpected transaction data format');
-    return null;
-  }
 
-  // FIXED: Helper to extract tuple fields
-  extractTupleField(tupleData, fieldName, expectedType) {
-    // Try both formats: 'field-name' and 'fieldName'
-    const value = tupleData[fieldName] || tupleData[fieldName.replace(/-/g, '')];
-    
-    if (value === undefined || value === null) {
-      console.warn(`⚠️ Field ${fieldName} not found in tuple`);
-      return expectedType === 'uint' ? 0 : expectedType === 'bool' ? false : null;
+    if (expectedType === 'bool') {
+      if (hex.startsWith('03')) return true;
+      if (hex.startsWith('04')) return false;
+      return false;
     }
-    
-    return this.extractValue({ result: value }, expectedType);
+
+    if (expectedType === 'principal') {
+      if (hex.startsWith('05') || hex.startsWith('06')) {
+        if (this.cache.owner && (this.cache.owner.startsWith('ST') || this.cache.owner.startsWith('SP'))) {
+          console.log('✅ Using cached principal:', this.cache.owner);
+          return this.cache.owner;
+        }
+        return '0x05' + hex;
+      }
+      return null;
+    }
+
+    return null;
   }
 
   extractValue(clarityResponse, expectedType = 'uint') {
@@ -310,29 +297,38 @@ export class ContractManager {
       result = result.result;
     }
 
-    console.log('📦 Extracted result:', result);
+    console.log('📦 Extracting value:', result, 'Type:', expectedType);
 
     if (expectedType === 'uint') {
-      if (typeof result === 'string') {
-        if (result.startsWith('0x')) {
-          const decoded = this.decodeClarityHex(result, 'uint');
-          if (decoded !== null) return decoded;
+      // Handle hex-encoded uint
+      if (typeof result === 'string' && result.startsWith('0x')) {
+        const decoded = this.decodeClarityHex(result, 'uint');
+        if (decoded !== null && decoded !== undefined) {
+          console.log('✅ Decoded hex uint:', decoded);
+          return decoded;
         }
-        
-        if (result.startsWith('u')) {
-          const numStr = result.slice(1);
-          const parsed = parseInt(numStr, 10);
+      }
+      
+      // Handle u-prefixed format (u123456)
+      if (typeof result === 'string' && result.startsWith('u')) {
+        const numStr = result.slice(1);
+        const parsed = parseInt(numStr, 10);
+        if (isFinite(parsed) && !isNaN(parsed)) {
           console.log('✅ Parsed u-format:', parsed);
           return parsed;
         }
-        
+      }
+      
+      // Handle plain string numbers
+      if (typeof result === 'string') {
         const num = parseInt(result, 10);
         if (isFinite(num) && !isNaN(num)) {
-          console.log('✅ Direct parse:', num);
+          console.log('✅ Direct string parse:', num);
           return num;
         }
       }
       
+      // Handle number type
       if (typeof result === 'number' && isFinite(result)) {
         console.log('✅ Number value:', result);
         return result;
@@ -376,64 +372,78 @@ export class ContractManager {
     return result;
   }
 
-  decodeClarityHex(hexString, expectedType) {
-    console.log('🔍 Decoding Clarity hex:', hexString, 'Type:', expectedType);
+  extractTransaction(response, txId) {
+    console.log('🔍 Extracting transaction from response');
     
-    if (!hexString || !hexString.startsWith('0x')) {
-      console.warn('⚠️ Invalid hex string');
+    if (!response || !response.result) {
+      console.warn('⚠️ No result in response');
       return null;
     }
-
-    let hex = hexString.slice(2);
-    console.log('📦 Hex without prefix:', hex);
-
-    if (expectedType === 'uint') {
-      if (hex.startsWith('01') && hex.length > 2) {
-        hex = hex.slice(2);
-        console.log('🔢 Value bytes:', hex);
-        
-        try {
-          const value = BigInt('0x' + hex);
-          const numValue = Number(value);
-          console.log('✅ Decoded uint128:', numValue);
-          return numValue;
-        } catch (e) {
-          console.error('❌ Failed to parse uint:', e);
-          return 0;
-        }
+    
+    let result = response.result;
+    
+    // Handle optional type wrapping
+    if (typeof result === 'string') {
+      if (result === 'none' || result.includes('none')) {
+        console.log('ℹ️ Transaction returned none');
+        return null;
       }
-      
-      try {
-        const value = parseInt(hex, 16);
-        if (isFinite(value) && !isNaN(value)) {
-          console.log('✅ Fallback parse:', value);
-          return value;
-        }
-      } catch (e) {
-        console.error('❌ Fallback parse failed:', e);
-      }
-      
-      return 0;
     }
-
-    if (expectedType === 'bool') {
-      if (hex.startsWith('03')) return true;
-      if (hex.startsWith('04')) return false;
-      return false;
+    
+    // If result has a value property, unwrap it
+    if (result && typeof result === 'object' && result.value) {
+      result = result.value;
     }
-
-    if (expectedType === 'principal') {
-      if (hex.startsWith('05') || hex.startsWith('06')) {
-        if (this.cache.owner && (this.cache.owner.startsWith('ST') || this.cache.owner.startsWith('SP'))) {
-          console.log('✅ Using cached principal:', this.cache.owner);
-          return this.cache.owner;
-        }
-        return '0x05' + hex;
-      }
+    
+    // Now extract the transaction data
+    if (!result || typeof result !== 'object') {
+      console.warn('⚠️ Invalid transaction data structure');
       return null;
     }
+    
+    try {
+      // Extract fields - handle both formats
+      const tipper = this.extractField(result, 'tipper', 'principal');
+      const amount = this.extractField(result, 'amount', 'uint');
+      const blockHeight = this.extractField(result, 'block-height', 'uint');
+      const timestamp = this.extractField(result, 'timestamp', 'uint');
+      const hasMessage = this.extractField(result, 'has-message', 'bool');
+      
+      const transaction = {
+        txId: txId,
+        tipper: tipper,
+        amount: microToStx(amount),
+        blockHeight: blockHeight,
+        timestamp: timestamp,
+        hasMessage: hasMessage
+      };
+      
+      console.log('✅ Extracted transaction:', transaction);
+      return transaction;
+    } catch (error) {
+      console.error('❌ Error extracting transaction:', error);
+      return null;
+    }
+  }
 
-    return null;
+  extractField(obj, fieldName, expectedType) {
+    // Try kebab-case first
+    let value = obj[fieldName];
+    
+    // If not found, try camelCase
+    if (value === undefined || value === null) {
+      const camelCase = fieldName.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+      value = obj[camelCase];
+    }
+    
+    // If still not found, return default
+    if (value === undefined || value === null) {
+      console.warn(`⚠️ Field ${fieldName} not found`);
+      return expectedType === 'uint' ? 0 : expectedType === 'bool' ? false : null;
+    }
+    
+    // Extract the value
+    return this.extractValue({ result: value }, expectedType);
   }
 
   extractUserStats(response) {
