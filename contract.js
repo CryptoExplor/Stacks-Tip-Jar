@@ -1,6 +1,7 @@
-// contract.js - Enhanced with FIXED transaction history support
+// contract.js - FIXED VERSION with proper encoding and error handling
 
 import { CONFIG, getNetworkEndpoint, microToStx } from './config.js';
+import { uintCV, cvToHex } from '@stacks/transactions';
 
 export class ContractManager {
   constructor() {
@@ -133,11 +134,9 @@ export class ContractManager {
     }
   }
 
-  // FIXED: Proper Clarity uint encoding
+  // FIXED: Use @stacks/transactions for proper encoding
   encodeClarityUint(value) {
-    // Clarity uint format: 0x01 (type prefix) + 32-byte big-endian value
-    const hex = value.toString(16).padStart(32, '0');
-    return `0x01${hex}`;
+    return cvToHex(uintCV(value));
   }
 
   // Encode principal for contract calls
@@ -146,12 +145,24 @@ export class ContractManager {
     return `0x0${Buffer.from(address, 'utf-8').toString('hex').padEnd(80, '0')}`;
   }
 
-  // NEW: FIXED fetch transaction history
+  // FIXED: Better transaction history fetching
   async fetchTransactionHistory(network = CONFIG.NETWORK.DEFAULT, limit = 10) {
     console.log('📜 Fetching transaction history...');
     
     try {
-      // Get total transaction count first
+      // Check if contract supports history
+      let supportsHistory = true;
+      try {
+        await this.callReadOnly('get-total-transactions', [], network);
+      } catch (error) {
+        console.log('⚠️ Contract does not support transaction history');
+        supportsHistory = false;
+        return [];
+      }
+
+      if (!supportsHistory) return [];
+
+      // Get total transaction count
       const totalResult = await this.callReadOnly('get-total-transactions', [], network);
       const total = this.extractValue(totalResult, 'uint');
       
@@ -197,7 +208,7 @@ export class ContractManager {
     }
   }
 
-  // NEW: Fetch a single transaction with better error handling
+  // FIXED: Better single transaction fetching
   async fetchSingleTransaction(txId, network = CONFIG.NETWORK.DEFAULT) {
     try {
       console.log(`📄 Fetching transaction ${txId}...`);
@@ -223,7 +234,6 @@ export class ContractManager {
     }
   }
 
-  // NEW: Fetch user's transaction history
   async fetchUserHistory(userAddress, network = CONFIG.NETWORK.DEFAULT) {
     console.log('👤 Fetching user history for:', userAddress);
     
@@ -437,30 +447,53 @@ export class ContractManager {
     };
   }
 
-  // FIXED: Extract transaction from response with better handling
+  // FIXED: Better transaction extraction with comprehensive error handling
   extractTransaction(response, txId) {
     console.log(`🔍 Extracting transaction ${txId}:`, response);
     
-    const result = response?.result || response;
+    let result = response?.result || response;
     
-    // Check for "none" response (transaction doesn't exist)
-    if (!result || result === 'none' || 
-        (typeof result === 'string' && result.includes('none'))) {
-      console.log(`⚠️ Transaction ${txId} is none/doesn't exist`);
+    // Handle wrapped response
+    if (result && typeof result === 'object' && result.result) {
+      result = result.result;
+    }
+    
+    // Check for "none" or "(none)" responses
+    if (!result || 
+        result === 'none' || 
+        (typeof result === 'string' && (
+          result.includes('none') || 
+          result.includes('(none)') ||
+          result.toLowerCase().includes('none')
+        ))) {
+      console.log(`⚠️ Transaction ${txId} doesn't exist`);
       return null;
     }
     
-    // Handle tuple response
+    // Handle tuple response  
     if (typeof result === 'object' && result !== null) {
       try {
+        // Extract fields with all possible variations
+        const tipper = result.tipper || result['tipper'];
+        const amount = result.amount || result['amount'];
+        const blockHeight = result['block-height'] || result.blockHeight || result['blockHeight'];
+        const timestamp = result.timestamp || result['timestamp'];
+        const hasMessage = result['has-message'] || result.hasMessage || result['hasMessage'];
+        
         const tx = {
           txId: txId,
-          tipper: this.extractValue(result.tipper, 'principal'),
-          amount: microToStx(this.extractValue(result.amount, 'uint')),
-          blockHeight: this.extractValue(result['block-height'] || result.blockHeight, 'uint'),
-          timestamp: this.extractValue(result.timestamp, 'uint'),
-          hasMessage: this.extractValue(result['has-message'] || result.hasMessage, 'bool')
+          tipper: this.extractValue(tipper, 'principal'),
+          amount: microToStx(this.extractValue(amount, 'uint')),
+          blockHeight: this.extractValue(blockHeight, 'uint'),
+          timestamp: this.extractValue(timestamp, 'uint'),
+          hasMessage: this.extractValue(hasMessage, 'bool')
         };
+        
+        // Validate required fields
+        if (!tx.tipper || tx.amount === 0) {
+          console.warn(`⚠️ Invalid transaction data for ${txId} - missing required fields`);
+          return null;
+        }
         
         console.log(`✅ Extracted transaction ${txId}:`, tx);
         return tx;
@@ -511,12 +544,10 @@ export class ContractManager {
     return data.userStats;
   }
 
-  // NEW: Get transaction history
   async getHistory(limit = 10, network = CONFIG.NETWORK.DEFAULT) {
     return await this.fetchTransactionHistory(network, limit);
   }
 
-  // NEW: Get user history
   async getUserHistory(userAddress, network = CONFIG.NETWORK.DEFAULT) {
     return await this.fetchUserHistory(userAddress, network);
   }
