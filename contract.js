@@ -1,6 +1,11 @@
-// contract.js - Enhanced with transaction history support
+// contract.js - FIXED principal encoding
 
 import { CONFIG, getNetworkEndpoint, microToStx } from './config.js';
+import { 
+  principalCV, 
+  cvToHex,
+  uintCV
+} from '@stacks/transactions';
 
 export class ContractManager {
   constructor() {
@@ -16,6 +21,7 @@ export class ContractManager {
       userHistory: null
     };
     this.cacheTimeout = 5000;
+    this.requestQueue = Promise.resolve(); // For rate limiting
   }
 
   isCacheValid() {
@@ -38,6 +44,76 @@ export class ContractManager {
     };
   }
 
+  // FIXED: Use @stacks/transactions for proper encoding
+  encodePrincipal(address) {
+    try {
+      const cv = principalCV(address);
+      return cvToHex(cv);
+    } catch (error) {
+      console.error('❌ Failed to encode principal:', error);
+      throw new Error(`Invalid principal address: ${address}`);
+    }
+  }
+
+  encodeClarityUint(value) {
+    try {
+      const cv = uintCV(value);
+      return cvToHex(cv);
+    } catch (error) {
+      console.error('❌ Failed to encode uint:', error);
+      throw new Error(`Invalid uint value: ${value}`);
+    }
+  }
+
+  // FIXED: Add rate limiting to prevent 429 errors
+  async rateLimit() {
+    // Wait 200ms between requests
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+
+  async callReadOnly(functionName, functionArgs = [], network = CONFIG.NETWORK.DEFAULT) {
+    // Queue requests to avoid rate limiting
+    this.requestQueue = this.requestQueue.then(async () => {
+      await this.rateLimit();
+      
+      const endpoint = getNetworkEndpoint(network);
+      const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
+      const [contractAddress, contractName] = contractId.split('.');
+
+      const url = `${endpoint}/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}?tip=latest`;
+
+      const body = {
+        sender: contractAddress,
+        arguments: functionArgs,
+      };
+
+      console.log(`📡 Calling ${functionName} at ${url}`);
+
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`❌ API error for ${functionName}:`, errorText);
+          throw new Error(`Contract call failed: ${response.status} - ${errorText}`);
+        }
+
+        const data = await response.json();
+        console.log(`✅ ${functionName} response:`, data);
+        return data;
+      } catch (error) {
+        console.error(`❌ Error calling ${functionName}:`, error);
+        throw error;
+      }
+    });
+
+    return this.requestQueue;
+  }
+
   async fetchContractData(network = CONFIG.NETWORK.DEFAULT, userAddress = null) {
     if (this.isCacheValid() && !userAddress) {
       console.log('💾 Using cached contract data');
@@ -51,47 +127,26 @@ export class ContractManager {
     console.log('📝 Contract ID:', contractId);
 
     try {
-      // Fetch all contract data in parallel
-      const fetchPromises = [
-        this.callReadOnly('get-contract-balance', [], network),
-        this.callReadOnly('get-total-tips', [], network),
-        this.callReadOnly('get-total-tippers', [], network),
-        this.callReadOnly('get-total-transactions', [], network),
-        this.callReadOnly('get-owner', [], network),
-      ];
-
-      // If user address provided, fetch user stats
-      if (userAddress) {
-        fetchPromises.push(
-          this.callReadOnly('get-tipper-stats', [this.encodePrincipal(userAddress)], network),
-          this.callReadOnly('is-premium-tipper', [this.encodePrincipal(userAddress)], network)
-        );
-      }
-
-      const results = await Promise.allSettled(fetchPromises);
-
-      console.log('📊 Raw API responses:', results);
-
-      // Extract values
-      const balance = results[0].status === 'fulfilled' 
-        ? this.extractValue(results[0].value, 'uint') 
-        : 0;
+      // Fetch basic stats first (no arguments)
+      const balance = await this.callReadOnly('get-contract-balance', [], network)
+        .then(r => this.extractValue(r, 'uint'))
+        .catch(() => 0);
       
-      const totalTips = results[1].status === 'fulfilled'
-        ? this.extractValue(results[1].value, 'uint')
-        : 0;
+      const totalTips = await this.callReadOnly('get-total-tips', [], network)
+        .then(r => this.extractValue(r, 'uint'))
+        .catch(() => 0);
 
-      const totalTippers = results[2].status === 'fulfilled'
-        ? this.extractValue(results[2].value, 'uint')
-        : 0;
+      const totalTippers = await this.callReadOnly('get-total-tippers', [], network)
+        .then(r => this.extractValue(r, 'uint'))
+        .catch(() => 0);
 
-      const totalTransactions = results[3].status === 'fulfilled'
-        ? this.extractValue(results[3].value, 'uint')
-        : 0;
+      const totalTransactions = await this.callReadOnly('get-total-transactions', [], network)
+        .then(r => this.extractValue(r, 'uint'))
+        .catch(() => 0);
 
-      const owner = results[4].status === 'fulfilled'
-        ? this.extractValue(results[4].value, 'principal')
-        : null;
+      const owner = await this.callReadOnly('get-owner', [], network)
+        .then(r => this.extractValue(r, 'principal'))
+        .catch(() => null);
 
       // Convert to STX for display
       const balanceSTX = microToStx(balance);
@@ -112,21 +167,35 @@ export class ContractManager {
         lastUpdate: Date.now(),
       };
 
-      // Add user stats if available
-      if (userAddress && results.length > 5) {
-        const userStatsResult = results[5].status === 'fulfilled' ? results[5].value : null;
-        const isPremiumResult = results[6].status === 'fulfilled' ? results[6].value : null;
+      // FIXED: Only fetch user stats if address provided
+      if (userAddress) {
+        try {
+          const userStatsResult = await this.callReadOnly(
+            'get-tipper-stats', 
+            [this.encodePrincipal(userAddress)], 
+            network
+          );
+          
+          const isPremiumResult = await this.callReadOnly(
+            'is-premium-tipper', 
+            [this.encodePrincipal(userAddress)], 
+            network
+          );
 
-        if (userStatsResult) {
-          const stats = this.extractUserStats(userStatsResult);
-          const isPremium = isPremiumResult ? this.extractValue(isPremiumResult, 'bool') : false;
-          
-          data.userStats = {
-            ...stats,
-            isPremium
-          };
-          
-          console.log('👤 User stats:', data.userStats);
+          if (userStatsResult) {
+            const stats = this.extractUserStats(userStatsResult);
+            const isPremium = isPremiumResult ? this.extractValue(isPremiumResult, 'bool') : false;
+            
+            data.userStats = {
+              ...stats,
+              isPremium
+            };
+            
+            console.log('👤 User stats:', data.userStats);
+          }
+        } catch (error) {
+          console.warn('⚠️ Failed to fetch user stats:', error.message);
+          // Continue without user stats
         }
       }
 
@@ -138,12 +207,11 @@ export class ContractManager {
     }
   }
 
-  // NEW: Fetch transaction history
+  // Rest of your methods stay the same...
   async fetchTransactionHistory(network = CONFIG.NETWORK.DEFAULT, limit = 10) {
     console.log('📜 Fetching transaction history...');
     
     try {
-      // Get total transaction count first
       const totalResult = await this.callReadOnly('get-total-transactions', [], network);
       const total = this.extractValue(totalResult, 'uint');
       
@@ -151,7 +219,6 @@ export class ContractManager {
         return [];
       }
       
-      // Fetch the last N transactions
       const start = Math.max(1, total - limit + 1);
       const transactions = [];
       
@@ -179,113 +246,6 @@ export class ContractManager {
       console.error('❌ Failed to fetch transaction history:', error);
       return [];
     }
-  }
-
-  // NEW: Fetch user's transaction history
-  async fetchUserHistory(userAddress, network = CONFIG.NETWORK.DEFAULT) {
-    console.log('👤 Fetching user history for:', userAddress);
-    
-    try {
-      const result = await this.callReadOnly(
-        'get-user-transactions',
-        [this.encodePrincipal(userAddress)],
-        network
-      );
-      
-      const userHistory = this.extractUserHistory(result);
-      console.log('✅ User history:', userHistory);
-      
-      this.cache.userHistory = userHistory;
-      return userHistory;
-    } catch (error) {
-      console.error('❌ Failed to fetch user history:', error);
-      return null;
-    }
-  }
-
-  // NEW: Fetch a specific transaction
-  async fetchTransaction(txId, network = CONFIG.NETWORK.DEFAULT) {
-    try {
-      const result = await this.callReadOnly(
-        'get-transaction',
-        [this.encodeClarityUint(txId)],
-        network
-      );
-      
-      return this.extractTransaction(result, txId);
-    } catch (error) {
-      console.error(`❌ Failed to fetch transaction ${txId}:`, error);
-      return null;
-    }
-  }
-
-  // NEW: Fetch message for a transaction
-  async fetchTipMessage(tipper, tipId, network = CONFIG.NETWORK.DEFAULT) {
-    try {
-      const result = await this.callReadOnly(
-        'get-tip-message',
-        [this.encodePrincipal(tipper), this.encodeClarityUint(tipId)],
-        network
-      );
-      
-      if (result && result.result) {
-        const messageData = result.result;
-        if (messageData && typeof messageData === 'object' && messageData.message) {
-          return messageData.message;
-        }
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('❌ Failed to fetch tip message:', error);
-      return null;
-    }
-  }
-
-  async callReadOnly(functionName, functionArgs = [], network = CONFIG.NETWORK.DEFAULT) {
-    const endpoint = getNetworkEndpoint(network);
-    const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
-    const [contractAddress, contractName] = contractId.split('.');
-
-    const url = `${endpoint}/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}?tip=latest`;
-
-    const body = {
-      sender: contractAddress,
-      arguments: functionArgs,
-    };
-
-    console.log(`📡 Calling ${functionName} at ${url}`);
-
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ API error for ${functionName}:`, errorText);
-        throw new Error(`Contract call failed: ${response.status} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      console.log(`✅ ${functionName} response:`, data);
-      return data;
-    } catch (error) {
-      console.error(`❌ Error calling ${functionName}:`, error);
-      throw error;
-    }
-  }
-
-  // Encode principal for contract calls
-  encodePrincipal(address) {
-    return `0x${Buffer.from(address).toString('hex')}`;
-  }
-
-  encodeClarityUint(value) {
-    const hex = value.toString(16).padStart(32, '0');
-    return `0x0100000000000000000000000000000000${hex}`;
   }
 
   decodeClarityHex(hexString, expectedType) {
@@ -423,7 +383,6 @@ export class ContractManager {
     return result;
   }
 
-  // Extract user stats from tuple
   extractUserStats(response) {
     const result = response.result || response;
     
@@ -444,11 +403,10 @@ export class ContractManager {
     };
   }
 
-  // NEW: Extract transaction from response
   extractTransaction(response, txId) {
     const result = response.result || response;
     
-    if (!result || result === 'none') {
+    if (!result || result === 'none' || result === '0x0709') {
       return null;
     }
     
@@ -460,22 +418,6 @@ export class ContractManager {
         blockHeight: this.extractValue(result['block-height'] || result.blockHeight, 'uint'),
         timestamp: this.extractValue(result.timestamp, 'uint'),
         hasMessage: this.extractValue(result['has-message'] || result.hasMessage, 'bool')
-      };
-    }
-    
-    return null;
-  }
-
-  // NEW: Extract user history
-  extractUserHistory(response) {
-    const result = response.result || response;
-    
-    if (typeof result === 'object' && result !== null) {
-      return {
-        user: this.extractValue(result.user, 'principal'),
-        tipCount: this.extractValue(result['tip-count'] || result.tipCount, 'uint'),
-        totalTipped: microToStx(this.extractValue(result['total-tipped'] || result.totalTipped, 'uint')),
-        lastTipHeight: this.extractValue(result['last-tip-height'] || result.lastTipHeight, 'uint')
       };
     }
     
@@ -504,14 +446,8 @@ export class ContractManager {
     return data.userStats;
   }
 
-  // NEW: Get transaction history
   async getHistory(limit = 10, network = CONFIG.NETWORK.DEFAULT) {
     return await this.fetchTransactionHistory(network, limit);
-  }
-
-  // NEW: Get user history
-  async getUserHistory(userAddress, network = CONFIG.NETWORK.DEFAULT) {
-    return await this.fetchUserHistory(userAddress, network);
   }
 }
 
