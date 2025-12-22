@@ -1,30 +1,31 @@
-// config.js - Configuration (FIXED)
+// config.js - Configuration with alternative API endpoints
 export const CONFIG = {
-  // Contract configuration - UPDATE THIS WITH YOUR DEPLOYED CONTRACT
   CONTRACT: {
-    ADDRESS: 'ST3ZQXJPR493FCYNAVFX1YSK7EMT6JF909E3SDNQG', // ⚠️ UPDATE WITH YOUR ADDRESS
-    NAME: 'tip-jar-v4', // ⚠️ MUST MATCH DEPLOYED CONTRACT NAME
-    OWNER: 'ST3ZQXJPR493FCYNAVFX1YSK7EMT6JF909E3SDNQG' // ⚠️ UPDATE WITH YOUR ADDRESS
+    ADDRESS: 'ST3ZQXJPR493FCYNAVFX1YSK7EMT6JF909E3SDNQG',
+    NAME: 'tip-jar-v4',
+    OWNER: 'ST3ZQXJPR493FCYNAVFX1YSK7EMT6JF909E3SDNQG'
   },
 
-  // Network configuration
   NETWORK: {
-    DEFAULT: 'testnet', // 'mainnet' or 'testnet'
+    DEFAULT: 'testnet',
     ENDPOINTS: {
+      // Try these alternative endpoints - they might have better CORS
       mainnet: 'https://api.hiro.so',
-      testnet: 'https://api.testnet.hiro.so'
+      testnet: 'https://api.testnet.hiro.so',
+      // Alternative: Stack's official API
+      testnetAlt: 'https://stacks-node-api.testnet.stacks.co',
+      // Alternative: Blockstack PBC API
+      testnetAlt2: 'https://stacks-blockchain-api-testnet.hiro.so'
     }
   },
 
-  // Faucet configuration
   FAUCET: {
     ENABLED: true,
     ENDPOINT: 'https://api.testnet.hiro.so/extended/v1/faucets/stx',
-    COOLDOWN: 300000, // 5 minutes in milliseconds
+    COOLDOWN: 300000,
     AMOUNT: 500
   },
 
-  // App metadata
   APP: {
     NAME: 'Stacks Tip Jar - Clarity 4 Enhanced',
     DESCRIPTION: 'Send STX tips with memos on Bitcoin L2 - Built with Clarity 4',
@@ -32,14 +33,12 @@ export const CONFIG = {
     URL: typeof window !== 'undefined' ? window.location.origin : 'https://stacks-chi.vercel.app'
   },
 
-  // Transaction settings
   TX: {
     POLLING_INTERVAL: 5000,
     CONFIRMATION_BLOCKS: 1,
-    TIMEOUT: 120000 // 2 minutes
+    TIMEOUT: 120000
   },
 
-  // UI settings
   UI: {
     QUICK_AMOUNTS: [0.1, 0.5, 1, 5],
     MIN_TIP: 0.000001,
@@ -52,17 +51,16 @@ export const CONFIG = {
   }
 };
 
-// Helper to get current network endpoint
 export function getNetworkEndpoint(network = CONFIG.NETWORK.DEFAULT) {
-  return CONFIG.NETWORK.ENDPOINTS[network];
+  // Try alternative endpoints if primary fails
+  return CONFIG.NETWORK.ENDPOINTS[network] || CONFIG.NETWORK.ENDPOINTS.testnet;
 }
 
-// Helper to get full contract identifier
+// Rest of your helper functions stay the same...
 export function getContractId() {
   return `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
 }
 
-// Convert STX to micro-STX with validation
 export function stxToMicro(stx) {
   const amount = Number(stx);
   if (!Number.isFinite(amount) || amount < 0) {
@@ -71,7 +69,6 @@ export function stxToMicro(stx) {
   return Math.floor(amount * 1_000_000);
 }
 
-// Convert micro-STX to STX with proper handling
 export function microToStx(micro) {
   const num = Number(micro);
   if (!Number.isFinite(num) || Number.isNaN(num) || num < 0) {
@@ -80,7 +77,6 @@ export function microToStx(micro) {
   return num / 1_000_000;
 }
 
-// Format STX for display with proper decimals
 export function formatStx(amount, decimals = CONFIG.UI.DECIMALS) {
   const num = Number(amount);
   if (!Number.isFinite(num) || Number.isNaN(num)) {
@@ -89,27 +85,21 @@ export function formatStx(amount, decimals = CONFIG.UI.DECIMALS) {
   return num.toFixed(decimals) + ' STX';
 }
 
-// Validate Stacks address
 export function isValidStacksAddress(address, network = CONFIG.NETWORK.DEFAULT) {
   if (!address || typeof address !== 'string') return false;
-  
-  // Testnet addresses start with ST, mainnet with SP
   const prefix = network === 'testnet' ? 'ST' : 'SP';
   return address.startsWith(prefix) && address.length >= 39 && address.length <= 41;
 }
 
-// Short address display
 export function shortAddress(address, start = 6, end = 4) {
   if (!address || address.length < start + end) return address || '';
   return `${address.slice(0, start)}...${address.slice(-end)}`;
 }
 
-// Check if faucet should be available
 export function isFaucetAvailable() {
   return CONFIG.FAUCET.ENABLED && CONFIG.NETWORK.DEFAULT === 'testnet';
 }
 
-// Decode memo from hex (Clarity 4 feature)
 export function decodeMemo(hexMemo) {
   if (!hexMemo || !hexMemo.startsWith('0x')) return '';
   
@@ -127,7 +117,6 @@ export function decodeMemo(hexMemo) {
   }
 }
 
-// Get Clarity 4 features
 export function getClarity4Features() {
   return {
     memoSupport: CONFIG.UI.SHOW_MEMO_SUPPORT,
@@ -138,7 +127,6 @@ export function getClarity4Features() {
   };
 }
 
-// Validate network matches wallet
 export function validateNetwork(walletAddress, expectedNetwork) {
   if (!walletAddress) return false;
   
@@ -156,7 +144,6 @@ export function validateNetwork(walletAddress, expectedNetwork) {
   return true;
 }
 
-// Safe localStorage wrapper
 export const storage = {
   get(key, defaultValue = null) {
     try {
