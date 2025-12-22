@@ -1,27 +1,31 @@
 {
   "name": "stacks-tip-jar",
-  "version": "2.0.0",
-  "description": "A Stacks tip jar dApp with Clarity 4",
+  "version": "2.0.1",
+  "description": "A Stacks tip jar dApp with Clarity 4 - Fixed version",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "echo 'No linting configured'",
+    "type-check": "echo 'No type checking configured'"
   },
   "dependencies": {
-    "@stacks/transactions": "^6.13.0",
-    "buffer": "^6.0.3"
+    "@stacks/transactions": "^6.13.0"
   },
   "devDependencies": {
-    "vite": "^5.4.0"
+    "vite": "^5.4.0",
+    "vite-plugin-node-polyfills": "^0.22.0"
   },
   "keywords": [
     "stacks",
     "blockchain",
     "clarity",
+    "clarity4",
     "bitcoin",
     "tip-jar",
-    "web3"
+    "web3",
+    "dapp"
   ],
   "author": "CryptoExplorer",
   "license": "MIT",
@@ -32,5 +36,9 @@
   "bugs": {
     "url": "https://github.com/CryptoExplor/stacks-tip-jar/issues"
   },
-  "homepage": "https://github.com/CryptoExplor/stacks-tip-jar#readme"
+  "homepage": "https://github.com/CryptoExplor/stacks-tip-jar#readme",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
 }
