@@ -1,4 +1,4 @@
-// ui.js - UI controller with transaction history support
+// ui.js - UI controller (FIXED)
 import { CONFIG, formatStx, isFaucetAvailable, getClarity4Features, shortAddress } from './config.js';
 import { walletManager } from './wallet.js';
 import { contractManager } from './contract.js';
@@ -12,7 +12,8 @@ export class UIController {
       stats: null,
       hasMessage: false,
       history: [],
-      historyLimit: 10
+      historyLimit: 10,
+      historySupported: null // null = unknown, true/false = known
     };
     this.faucetTimer = null;
   }
@@ -43,7 +44,6 @@ export class UIController {
 
   cacheElements() {
     this.elements = {
-      // Wallet connection
       leatherBtn: document.getElementById('leatherBtn'),
       xverseBtn: document.getElementById('xverseBtn'),
       disconnectBtn: document.getElementById('disconnectBtn'),
@@ -53,8 +53,13 @@ export class UIController {
       walletAddress: document.getElementById('walletAddress'),
       walletBadge: document.getElementById('walletBadge'),
       installNotice: document.getElementById('installNotice'),
+      premiumStatus: document.getElementById('premiumStatus'),
+      premiumInfo: document.getElementById('premiumInfo'),
+      premiumProgress: document.getElementById('premiumProgress'),
+      premiumProgressText: document.getElementById('premiumProgressText'),
+      userStatsRow: document.getElementById('userStatsRow'),
+      userTotalTips: document.getElementById('userTotalTips'),
 
-      // Tip sending
       amountInput: document.getElementById('amount'),
       messageInput: document.getElementById('message'),
       charCount: document.getElementById('charCount'),
@@ -62,7 +67,6 @@ export class UIController {
       sendTipBtnText: document.getElementById('sendTipBtnText'),
       quickAmounts: document.querySelectorAll('.quick-amount'),
 
-      // Stats
       networkDisplay: document.getElementById('networkDisplay'),
       contractBalance: document.getElementById('contractBalance'),
       totalTips: document.getElementById('totalTips'),
@@ -70,45 +74,32 @@ export class UIController {
       totalTransactions: document.getElementById('totalTransactions'),
       refreshBtn: document.getElementById('refreshBtn'),
 
-      // History
       historySection: document.getElementById('historySection'),
       historyList: document.getElementById('historyList'),
       refreshHistoryBtn: document.getElementById('refreshHistoryBtn'),
       loadMoreBtn: document.getElementById('loadMoreBtn'),
 
-      // Owner-only withdraw
       withdrawBtn: document.getElementById('withdrawBtn'),
-
-      // Faucet
       faucetBtn: document.getElementById('faucetBtn'),
       faucetSection: document.getElementById('faucetSection'),
-
-      // Status
       status: document.getElementById('status'),
     };
   }
 
   attachEventListeners() {
-    // Wallet connection buttons
     this.elements.leatherBtn?.addEventListener('click', () => this.connectLeather());
     this.elements.xverseBtn?.addEventListener('click', () => this.connectXverse());
     this.elements.disconnectBtn?.addEventListener('click', () => this.disconnect());
 
-    // Tip sending
     this.elements.sendTipBtn?.addEventListener('click', () => this.sendTip());
     this.elements.refreshBtn?.addEventListener('click', () => this.refreshStats());
 
-    // History
     this.elements.refreshHistoryBtn?.addEventListener('click', () => this.refreshHistory());
     this.elements.loadMoreBtn?.addEventListener('click', () => this.loadMoreHistory());
 
-    // Withdraw
     this.elements.withdrawBtn?.addEventListener('click', () => this.withdraw());
-
-    // Faucet
     this.elements.faucetBtn?.addEventListener('click', () => this.claimFaucet());
 
-    // Quick amount buttons
     this.elements.quickAmounts.forEach(btn => {
       btn.addEventListener('click', e => {
         const amount = e.target.dataset.amount;
@@ -118,18 +109,26 @@ export class UIController {
       });
     });
 
-    // Message character counter
+    // FIXED: Correct character counter
     this.elements.messageInput?.addEventListener('input', e => {
       const length = e.target.value.length;
       if (this.elements.charCount) {
         this.elements.charCount.textContent = length;
+        
+        // Warning if approaching limit
+        if (length > 260) {
+          this.elements.charCount.style.color = 'var(--error)';
+        } else if (length > 240) {
+          this.elements.charCount.style.color = 'var(--warning)';
+        } else {
+          this.elements.charCount.style.color = 'var(--text-secondary)';
+        }
       }
       
       this.state.hasMessage = length > 0;
       this.updateSendButton();
     });
 
-    // Enter key on amount input
     this.elements.amountInput?.addEventListener('keypress', e => {
       if (e.key === 'Enter') {
         this.sendTip();
@@ -145,6 +144,7 @@ export class UIController {
       this.updateFaucetButton();
       
       if (walletState.connected) {
+        this.loadUserStats();
         this.loadHistory();
       }
     });
@@ -174,7 +174,6 @@ export class UIController {
   async loadInitialData() {
     console.log('📊 Loading initial data...');
     await this.refreshStats();
-    await this.loadHistory();
 
     if (this.elements.networkDisplay) {
       const network = CONFIG.NETWORK.DEFAULT;
@@ -262,56 +261,80 @@ export class UIController {
     this.faucetTimer = setInterval(updateButton, 1000);
   }
 
-  // NEW: Load transaction history
-// Partial ui.js fix for loadHistory function
-
-async loadHistory() {
-  console.log('📜 Loading transaction history...');
-  
-  if (!this.elements.historyList) return;
-  
-  this.elements.historyList.innerHTML = '<div class="history-loading">Loading transaction history...</div>';
-  
-  try {
-    // First check if there are any transactions
-    const stats = await contractManager.getStats(CONFIG.NETWORK.DEFAULT, false);
+  // FIXED: Better history loading with contract version detection
+  async loadHistory() {
+    console.log('📜 Loading transaction history...');
     
-    if (stats.totalTransactions === 0) {
-      console.log('ℹ️ No transactions in contract yet');
-      this.elements.historyList.innerHTML = '<div class="history-empty">No tips yet. Be the first to send one! 🚀</div>';
-      return;
-    }
+    if (!this.elements.historyList) return;
     
-    console.log(`📊 Contract has ${stats.totalTransactions} transactions, fetching...`);
+    // Show loading state
+    this.elements.historyList.innerHTML = '<div class="history-loading">Loading transaction history...</div>';
     
-    const history = await contractManager.getHistory(this.state.historyLimit);
-    this.state.history = history;
-    
-    if (history.length === 0) {
-      // Contract doesn't support transaction history
+    try {
+      // First check if there are any transactions
+      const stats = await contractManager.getStats(CONFIG.NETWORK.DEFAULT, false);
+      
+      if (stats.totalTransactions === 0) {
+        console.log('ℹ️ No transactions in contract yet');
+        this.elements.historyList.innerHTML = '<div class="history-empty">No tips yet. Be the first to send one! 🚀</div>';
+        this.state.historySupported = true; // Contract loaded, just no data
+        return;
+      }
+      
+      console.log(`📊 Contract has ${stats.totalTransactions} transactions, fetching...`);
+      
+      const history = await contractManager.getHistory(this.state.historyLimit);
+      
+      // FIXED: Detect if contract supports history
+      if (history.length === 0 && stats.totalTransactions > 0) {
+        // Contract has transactions but getHistory returned empty
+        // This means the contract doesn't support transaction history
+        this.state.historySupported = false;
+        this.elements.historyList.innerHTML = `
+          <div class="history-empty">
+            <p>📊 Transaction history not available</p>
+            <p style="font-size: 12px; margin-top: 8px; opacity: 0.8; line-height: 1.5;">
+              This contract version doesn't support transaction history.<br/>
+              Deploy <code>tip-jar-v4.clar</code> to enable this feature.<br/>
+              Current transactions: ${stats.totalTransactions}
+            </p>
+          </div>
+        `;
+      } else {
+        // History is supported and we have data
+        this.state.historySupported = true;
+        this.state.history = history;
+        this.renderHistory(history);
+        
+        // Show load more button if there are more transactions
+        if (this.elements.loadMoreBtn) {
+          this.elements.loadMoreBtn.style.display = 
+            history.length >= this.state.historyLimit ? 'block' : 'none';
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to load history:', error);
+      this.state.historySupported = false;
       this.elements.historyList.innerHTML = `
         <div class="history-empty">
-          <p>📊 Transaction history not available</p>
+          <p>❌ Failed to load transaction history</p>
           <p style="font-size: 12px; margin-top: 8px; opacity: 0.8;">
-            This contract version doesn't support transaction history.<br/>
-            Deploy <code>tip-jar-v4.clar</code> to enable this feature.
+            ${error.message || 'Please try again or check console for details'}
           </p>
         </div>
       `;
-    } else {
-      this.renderHistory(history);
     }
-  } catch (error) {
-    console.error('❌ Failed to load history:', error);
-    this.elements.historyList.innerHTML = '<div class="history-empty">Failed to load transaction history. Please try again.</div>';
   }
-}
 
-  // NEW: Render history items
   renderHistory(transactions) {
     if (!this.elements.historyList) return;
     
     this.elements.historyList.innerHTML = '';
+    
+    if (transactions.length === 0) {
+      this.elements.historyList.innerHTML = '<div class="history-empty">No transactions found</div>';
+      return;
+    }
     
     transactions.forEach(tx => {
       const item = this.createHistoryItem(tx);
@@ -319,7 +342,6 @@ async loadHistory() {
     });
   }
 
-  // NEW: Create a single history item
   createHistoryItem(tx) {
     const item = document.createElement('div');
     item.className = 'history-item';
@@ -330,6 +352,7 @@ async loadHistory() {
     const tipper = document.createElement('div');
     tipper.className = 'history-item-tipper';
     tipper.textContent = shortAddress(tx.tipper);
+    tipper.title = tx.tipper; // Full address on hover
     
     const amount = document.createElement('div');
     amount.className = 'history-item-amount';
@@ -375,12 +398,13 @@ async loadHistory() {
     return item;
   }
 
-  // NEW: Refresh history
+  // FIXED: Show loading state during refresh
   async refreshHistory() {
     console.log('🔄 Refreshing history...');
     
     if (this.elements.refreshHistoryBtn) {
       this.elements.refreshHistoryBtn.disabled = true;
+      this.elements.refreshHistoryBtn.textContent = '⏳';
     }
     
     try {
@@ -388,14 +412,56 @@ async loadHistory() {
     } finally {
       if (this.elements.refreshHistoryBtn) {
         this.elements.refreshHistoryBtn.disabled = false;
+        this.elements.refreshHistoryBtn.textContent = '🔄';
       }
     }
   }
 
-  // NEW: Load more history
   async loadMoreHistory() {
     this.state.historyLimit += 10;
     await this.loadHistory();
+  }
+
+  // FIXED: Load user-specific stats
+  async loadUserStats() {
+    if (!walletManager.address) return;
+    
+    try {
+      const stats = await contractManager.getUserStats(walletManager.address);
+      
+      if (stats && stats.totalTipped > 0) {
+        // Show user stats row
+        if (this.elements.userStatsRow) {
+          this.elements.userStatsRow.style.display = 'flex';
+        }
+        if (this.elements.userTotalTips) {
+          this.elements.userTotalTips.textContent = formatStx(stats.totalTipped);
+        }
+        
+        // Update premium status
+        if (stats.isPremium && this.elements.premiumStatus) {
+          this.elements.premiumStatus.style.display = 'flex';
+        }
+        
+        // Update premium progress
+        if (this.elements.premiumInfo && !stats.isPremium) {
+          this.elements.premiumInfo.style.display = 'block';
+          const progress = Math.min((stats.totalTipped / 10) * 100, 100);
+          
+          if (this.elements.premiumProgress) {
+            this.elements.premiumProgress.style.width = progress + '%';
+          }
+          if (this.elements.premiumProgressText) {
+            this.elements.premiumProgressText.textContent = 
+              `${stats.totalTipped.toFixed(2)} / 10 STX`;
+          }
+        } else if (this.elements.premiumInfo && stats.isPremium) {
+          this.elements.premiumInfo.style.display = 'none';
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to load user stats:', error);
+    }
   }
 
   async connectLeather() {
@@ -405,7 +471,7 @@ async loadHistory() {
 
     try {
       await walletManager.connectLeather();
-      this.showStatus(`Connected with Leather!`, 'success');
+      this.showStatus('Connected with Leather!', 'success');
       await this.loadHistory();
     } catch (error) {
       console.error('❌ Leather connection failed:', error);
@@ -425,7 +491,7 @@ async loadHistory() {
 
     try {
       await walletManager.connectXverse();
-      this.showStatus(`Connected with Xverse!`, 'success');
+      this.showStatus('Connected with Xverse!', 'success');
       await this.loadHistory();
     } catch (error) {
       console.error('❌ Xverse connection failed:', error);
@@ -448,10 +514,19 @@ async loadHistory() {
       this.faucetTimer = null;
     }
     
-    // Clear history
+    // Clear history and user stats
     this.state.history = [];
     if (this.elements.historyList) {
       this.elements.historyList.innerHTML = '<div class="history-empty">Connect wallet to view history</div>';
+    }
+    if (this.elements.userStatsRow) {
+      this.elements.userStatsRow.style.display = 'none';
+    }
+    if (this.elements.premiumStatus) {
+      this.elements.premiumStatus.style.display = 'none';
+    }
+    if (this.elements.premiumInfo) {
+      this.elements.premiumInfo.style.display = 'none';
     }
   }
 
@@ -548,6 +623,11 @@ async loadHistory() {
       return;
     }
 
+    if (amount > CONFIG.UI.MAX_TIP) {
+      this.showStatus(`Maximum tip is ${CONFIG.UI.MAX_TIP} STX`, 'error');
+      return;
+    }
+
     if (!walletManager.address) {
       this.showStatus('Please connect your wallet first', 'error');
       return;
@@ -586,20 +666,24 @@ async loadHistory() {
         this.elements.messageInput.value = '';
         if (this.elements.charCount) {
           this.elements.charCount.textContent = '0';
+          this.elements.charCount.style.color = 'var(--text-secondary)';
         }
       }
       this.state.hasMessage = false;
       this.updateSendButton();
 
+      // FIXED: Don't spam refresh - use progressive refresh
       contractManager.clearCache();
       setTimeout(() => this.refreshStats(), 3000);
+      setTimeout(() => this.loadUserStats(), 3000);
       setTimeout(() => this.refreshHistory(), 5000);
-      setTimeout(() => this.refreshStats(), 10000);
-      setTimeout(() => this.refreshHistory(), 15000);
+      setTimeout(() => this.refreshStats(), 15000);
     } catch (error) {
       console.error('❌ Send tip failed:', error);
       if (error.message && error.message.toLowerCase().includes('cancel')) {
         this.showStatus('Transaction cancelled', 'info');
+      } else if (error.message && error.message.toLowerCase().includes('timeout')) {
+        this.showStatus('Transaction timeout - please check your wallet', 'error');
       } else {
         this.showStatus(
           'Transaction failed: ' + (error.message || 'Unknown error'),
@@ -648,6 +732,8 @@ async loadHistory() {
       console.error('❌ Withdraw failed:', error);
       if (error.message && error.message.toLowerCase().includes('cancel')) {
         this.showStatus('Withdrawal cancelled', 'info');
+      } else if (error.message && error.message.toLowerCase().includes('timeout')) {
+        this.showStatus('Withdrawal timeout - please check your wallet', 'error');
       } else {
         this.showStatus(
           'Withdrawal failed: ' + (error.message || 'Unknown error'),
@@ -664,7 +750,7 @@ async loadHistory() {
     this.showStatus('Refreshing stats...', 'info');
 
     try {
-      const stats = await contractManager.getStats(CONFIG.NETWORK.DEFAULT, true);
+      const stats = await contractManager.getStats(CONFIG.NETWORK.DEFAULT, true, walletManager.address);
       console.log('📊 Stats:', stats);
       this.state.stats = stats;
 
@@ -679,6 +765,11 @@ async loadHistory() {
       }
       if (this.elements.totalTransactions) {
         this.elements.totalTransactions.textContent = stats.totalTransactions || 0;
+      }
+
+      // Update user stats if connected
+      if (walletManager.address) {
+        await this.loadUserStats();
       }
 
       this.showStatus('Stats updated', 'success');
