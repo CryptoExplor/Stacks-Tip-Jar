@@ -1,6 +1,14 @@
-// wallet.js - Wallet management with Clarity 4 message support
-import { CONFIG } from './config.js';
-import { uintCV, cvToHex, standardPrincipalCV, stringUtf8CV } from '@stacks/transactions';
+// wallet.js - Wallet management (FIXED)
+import { CONFIG, validateNetwork, storage } from './config.js';
+import { 
+  uintCV, 
+  cvToHex, 
+  standardPrincipalCV, 
+  stringUtf8CV,
+  PostConditionMode,
+  makeStandardSTXPostCondition,
+  FungibleConditionCode
+} from '@stacks/transactions';
 
 export class WalletManager {
   constructor() {
@@ -10,9 +18,11 @@ export class WalletManager {
     this.isReady = false;
     this.lastFaucetClaim = null;
     this.autoReconnected = false;
+    this.pendingTxTimeout = null;
     
-    // Load saved wallet state
+    // Load saved wallet state and faucet cooldown
     this.loadWalletState();
+    this.loadFaucetCooldown();
   }
 
   saveWalletState() {
@@ -22,52 +32,58 @@ export class WalletManager {
         walletType: this.walletType,
         timestamp: Date.now()
       };
-      try {
-        localStorage.setItem('stacks_wallet_state', JSON.stringify(state));
-        console.log('💾 Saved wallet state:', state);
-      } catch (err) {
-        console.warn('⚠️ Could not save wallet state to localStorage', err);
-      }
+      storage.set('stacks_wallet_state', state);
+      console.log('💾 Saved wallet state');
     }
   }
 
   loadWalletState() {
-    try {
-      const saved = localStorage.getItem('stacks_wallet_state');
-      if (saved) {
-        const state = JSON.parse(saved);
-        const hoursSince = (Date.now() - state.timestamp) / (1000 * 60 * 60);
+    const saved = storage.get('stacks_wallet_state');
+    if (saved) {
+      const hoursSince = (Date.now() - saved.timestamp) / (1000 * 60 * 60);
+      
+      if (hoursSince < 24) {
+        this.address = saved.address;
+        this.walletType = saved.walletType;
+        this.autoReconnected = true;
+        console.log('✅ Restored wallet state:', saved);
         
-        if (hoursSince < 24) {
-          this.address = state.address;
-          this.walletType = state.walletType;
-          this.autoReconnected = true;
-          console.log('✅ Restored wallet state:', state);
-          
-          setTimeout(() => {
-            console.log('🔔 Notifying listeners of auto-reconnect');
-            this.notify();
-          }, 100);
-          
-          return true;
-        } else {
-          console.log('⚠️ Wallet state expired, clearing...');
-          localStorage.removeItem('stacks_wallet_state');
-        }
+        setTimeout(() => {
+          console.log('🔔 Notifying listeners of auto-reconnect');
+          this.notify();
+        }, 100);
+        
+        return true;
+      } else {
+        console.log('⚠️ Wallet state expired, clearing...');
+        storage.remove('stacks_wallet_state');
       }
-    } catch (error) {
-      console.error('❌ Failed to load wallet state:', error);
-      try { localStorage.removeItem('stacks_wallet_state'); } catch {}
     }
     return false;
   }
 
   clearWalletState() {
-    try {
-      localStorage.removeItem('stacks_wallet_state');
-      console.log('🗑️ Cleared wallet state');
-    } catch (err) {
-      console.warn('⚠️ Could not clear wallet state', err);
+    storage.remove('stacks_wallet_state');
+    console.log('🗑️ Cleared wallet state');
+  }
+
+  // FIXED: Persist faucet cooldown
+  saveFaucetCooldown() {
+    if (this.lastFaucetClaim) {
+      storage.set('faucet_last_claim', this.lastFaucetClaim);
+    }
+  }
+
+  loadFaucetCooldown() {
+    const lastClaim = storage.get('faucet_last_claim');
+    if (lastClaim) {
+      const timeSince = Date.now() - lastClaim;
+      if (timeSince < CONFIG.FAUCET.COOLDOWN) {
+        this.lastFaucetClaim = lastClaim;
+        console.log('✅ Restored faucet cooldown');
+      } else {
+        storage.remove('faucet_last_claim');
+      }
     }
   }
 
@@ -77,7 +93,7 @@ export class WalletManager {
 
   async waitForWallets() {
     let attempts = 0;
-    const maxAttempts = 20;
+    const maxAttempts = 30; // Increased from 20
 
     while (attempts < maxAttempts) {
       const availability = this.checkAvailability();
@@ -86,7 +102,7 @@ export class WalletManager {
         console.log('✅ Wallets detected:', availability);
         return;
       }
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 200)); // Increased from 100ms
       attempts++;
     }
 
@@ -118,7 +134,6 @@ export class WalletManager {
       walletType: this.walletType,
       connected: !!this.address,
     };
-    console.log('📤 State being sent:', state);
     
     this.listeners.forEach(cb => {
       try {
@@ -141,6 +156,7 @@ export class WalletManager {
     };
   }
 
+  // FIXED: Use @stacks/transactions instead of raw Buffer
   encodeClarityUint(microAmount) {
     const cv = uintCV(microAmount);
     return cvToHex(cv);
@@ -151,7 +167,6 @@ export class WalletManager {
     return cvToHex(cv);
   }
 
-  // NEW: Encode string-utf8 for Clarity 4 messages
   encodeClarityString(str) {
     const cv = stringUtf8CV(str);
     return cvToHex(cv);
@@ -212,6 +227,10 @@ export class WalletManager {
       this.address = finalAddress.address;
       this.walletType = 'leather';
       this.autoReconnected = false;
+      
+      // FIXED: Validate network matches
+      validateNetwork(this.address, CONFIG.NETWORK.DEFAULT);
+      
       console.log('✅ Connected:', this.address);
       
       this.saveWalletState();
@@ -261,6 +280,10 @@ export class WalletManager {
       this.address = address;
       this.walletType = 'xverse';
       this.autoReconnected = false;
+      
+      // FIXED: Validate network matches
+      validateNetwork(this.address, CONFIG.NETWORK.DEFAULT);
+      
       console.log('✅ Connected:', this.address);
       
       this.saveWalletState();
@@ -283,6 +306,12 @@ export class WalletManager {
     this.address = null;
     this.walletType = null;
     this.autoReconnected = false;
+    
+    if (this.pendingTxTimeout) {
+      clearTimeout(this.pendingTxTimeout);
+      this.pendingTxTimeout = null;
+    }
+    
     this.clearWalletState();
     this.notify();
   }
@@ -346,6 +375,8 @@ export class WalletManager {
       console.log('✅ Faucet response:', data);
 
       this.lastFaucetClaim = Date.now();
+      this.saveFaucetCooldown(); // FIXED: Persist cooldown
+      
       const txId = data.txId || data.txid;
 
       return {
@@ -379,6 +410,18 @@ export class WalletManager {
     return { canClaim: true };
   }
 
+  // FIXED: Added transaction timeout
+  async withTimeout(promise, timeoutMs = CONFIG.TX.TIMEOUT) {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        this.pendingTxTimeout = setTimeout(() => {
+          reject(new Error('Transaction timeout - wallet did not respond'));
+        }, timeoutMs);
+      })
+    ]);
+  }
+
   async sendTip(amount) {
     console.log('💸 Attempting to send tip:', amount, 'STX');
 
@@ -390,24 +433,34 @@ export class WalletManager {
       throw new Error('Invalid tip amount');
     }
 
+    if (amount > CONFIG.UI.MAX_TIP) {
+      throw new Error(`Tip amount exceeds maximum (${CONFIG.UI.MAX_TIP} STX)`);
+    }
+
     const microAmount = Math.floor(amount * 1_000_000);
     console.log('💰 Micro amount:', microAmount);
 
     try {
-      if (this.walletType === 'leather') {
-        return await this.sendTipLeather(microAmount);
-      } else if (this.walletType === 'xverse') {
-        return await this.sendTipXverse(microAmount);
-      } else {
-        throw new Error('Unknown wallet type: ' + this.walletType);
+      const result = this.walletType === 'leather'
+        ? await this.withTimeout(this.sendTipLeather(microAmount))
+        : await this.withTimeout(this.sendTipXverse(microAmount));
+      
+      if (this.pendingTxTimeout) {
+        clearTimeout(this.pendingTxTimeout);
+        this.pendingTxTimeout = null;
       }
+      
+      return result;
     } catch (error) {
+      if (this.pendingTxTimeout) {
+        clearTimeout(this.pendingTxTimeout);
+        this.pendingTxTimeout = null;
+      }
       console.error('❌ Send tip error:', error);
       throw error;
     }
   }
 
-  // NEW: Send tip with message (Clarity 4 feature)
   async sendTipWithMessage(amount, message) {
     console.log('💬 Attempting to send tip with message:', amount, 'STX');
     console.log('📝 Message:', message);
@@ -421,26 +474,33 @@ export class WalletManager {
     }
 
     if (!message || message.length === 0) {
-      // Fall back to regular tip if no message
       return await this.sendTip(amount);
     }
 
-    if (message.length > 280) {
-      throw new Error('Message too long (max 280 characters)');
+    // FIXED: Correct length check
+    if (message.length > CONFIG.UI.MAX_MESSAGE_LENGTH) {
+      throw new Error(`Message too long (max ${CONFIG.UI.MAX_MESSAGE_LENGTH} characters)`);
     }
 
     const microAmount = Math.floor(amount * 1_000_000);
     console.log('💰 Micro amount:', microAmount);
 
     try {
-      if (this.walletType === 'leather') {
-        return await this.sendTipWithMessageLeather(microAmount, message);
-      } else if (this.walletType === 'xverse') {
-        return await this.sendTipWithMessageXverse(microAmount, message);
-      } else {
-        throw new Error('Unknown wallet type: ' + this.walletType);
+      const result = this.walletType === 'leather'
+        ? await this.withTimeout(this.sendTipWithMessageLeather(microAmount, message))
+        : await this.withTimeout(this.sendTipWithMessageXverse(microAmount, message));
+      
+      if (this.pendingTxTimeout) {
+        clearTimeout(this.pendingTxTimeout);
+        this.pendingTxTimeout = null;
       }
+      
+      return result;
     } catch (error) {
+      if (this.pendingTxTimeout) {
+        clearTimeout(this.pendingTxTimeout);
+        this.pendingTxTimeout = null;
+      }
       console.error('❌ Send tip with message error:', error);
       throw error;
     }
@@ -449,15 +509,8 @@ export class WalletManager {
   async sendTipLeather(microAmount) {
     console.log('🦊 Sending via Leather...');
 
-    if (typeof window === 'undefined') {
-      throw new Error('Wallets are only available in the browser');
-    }
-
     const provider = window.LeatherProvider || window.HiroWalletProvider;
-
-    if (!provider) {
-      throw new Error('Leather provider not found');
-    }
+    if (!provider) throw new Error('Leather provider not found');
 
     try {
       const contractId = `${CONFIG.CONTRACT.ADDRESS}.${CONFIG.CONTRACT.NAME}`;
@@ -467,12 +520,18 @@ export class WalletManager {
         contract: contractId,
         functionName: 'send-tip',
         functionArgs: [argHex],
-        postConditionMode: 'allow',
+        postConditionMode: PostConditionMode.Deny,
+        postConditions: [
+          makeStandardSTXPostCondition(
+            this.address,
+            FungibleConditionCode.Equal,
+            microAmount
+          )
+        ],
         network: CONFIG.NETWORK.DEFAULT,
       };
 
       console.log('📤 Calling stx_callContract:', params);
-
       const response = await provider.request('stx_callContract', params);
       console.log('✅ Transaction response:', response);
 
@@ -481,23 +540,15 @@ export class WalletManager {
       }
 
       const txid = this.extractTxId(response);
+      if (!txid) throw new Error('No transaction ID returned');
 
-      if (!txid) {
-        throw new Error('No transaction ID returned');
-      }
-
-      return {
-        success: true,
-        txId: txid,
-        walletType: 'leather',
-      };
+      return { success: true, txId: txid, walletType: 'leather' };
     } catch (error) {
       console.error('❌ Leather transaction failed:', error);
-      throw new Error(error.message || 'Transaction failed');
+      throw error;
     }
   }
 
-  // NEW: Send tip with message via Leather
   async sendTipWithMessageLeather(microAmount, message) {
     console.log('🦊 Sending with message via Leather...');
 
@@ -513,12 +564,18 @@ export class WalletManager {
         contract: contractId,
         functionName: 'send-tip-with-message',
         functionArgs: [amountHex, messageHex],
-        postConditionMode: 'allow',
+        postConditionMode: PostConditionMode.Deny,
+        postConditions: [
+          makeStandardSTXPostCondition(
+            this.address,
+            FungibleConditionCode.Equal,
+            microAmount
+          )
+        ],
         network: CONFIG.NETWORK.DEFAULT,
       };
 
       console.log('📤 Calling send-tip-with-message:', params);
-
       const response = await provider.request('stx_callContract', params);
       console.log('✅ Transaction response:', response);
 
@@ -527,32 +584,19 @@ export class WalletManager {
       }
 
       const txid = this.extractTxId(response);
-      if (!txid) {
-        throw new Error('No transaction ID returned');
-      }
+      if (!txid) throw new Error('No transaction ID returned');
 
-      return {
-        success: true,
-        txId: txid,
-        walletType: 'leather',
-        hasMessage: true
-      };
+      return { success: true, txId: txid, walletType: 'leather', hasMessage: true };
     } catch (error) {
       console.error('❌ Leather transaction failed:', error);
-      throw new Error(error.message || 'Transaction failed');
+      throw error;
     }
   }
 
   async sendTipXverse(microAmount) {
     console.log('⚡ Sending via Xverse...');
 
-    if (typeof window === 'undefined') {
-      throw new Error('Wallets are only available in the browser');
-    }
-
-    if (!window.XverseProviders) {
-      throw new Error('Xverse provider not found');
-    }
+    if (!window.XverseProviders) throw new Error('Xverse provider not found');
 
     try {
       const stacksProvider = window.XverseProviders.StacksProvider;
@@ -563,12 +607,18 @@ export class WalletManager {
         contract: contractId,
         functionName: 'send-tip',
         functionArgs: [argHex],
-        postConditionMode: 'allow',
+        postConditionMode: PostConditionMode.Deny,
+        postConditions: [
+          makeStandardSTXPostCondition(
+            this.address,
+            FungibleConditionCode.Equal,
+            microAmount
+          )
+        ],
         network: CONFIG.NETWORK.DEFAULT,
       };
 
       console.log('📤 Calling stx_callContract:', params);
-
       const response = await stacksProvider.request('stx_callContract', params);
       console.log('✅ Transaction response:', response);
 
@@ -577,23 +627,15 @@ export class WalletManager {
       }
 
       const txid = this.extractTxId(response);
+      if (!txid) throw new Error('No transaction ID returned');
 
-      if (!txid) {
-        throw new Error('No transaction ID returned');
-      }
-
-      return {
-        success: true,
-        txId: txid,
-        walletType: 'xverse',
-      };
+      return { success: true, txId: txid, walletType: 'xverse' };
     } catch (error) {
       console.error('❌ Xverse transaction failed:', error);
-      throw new Error(error.message || 'Transaction failed');
+      throw error;
     }
   }
 
-  // NEW: Send tip with message via Xverse
   async sendTipWithMessageXverse(microAmount, message) {
     console.log('⚡ Sending with message via Xverse...');
 
@@ -609,12 +651,18 @@ export class WalletManager {
         contract: contractId,
         functionName: 'send-tip-with-message',
         functionArgs: [amountHex, messageHex],
-        postConditionMode: 'allow',
+        postConditionMode: PostConditionMode.Deny,
+        postConditions: [
+          makeStandardSTXPostCondition(
+            this.address,
+            FungibleConditionCode.Equal,
+            microAmount
+          )
+        ],
         network: CONFIG.NETWORK.DEFAULT,
       };
 
       console.log('📤 Calling send-tip-with-message:', params);
-
       const response = await stacksProvider.request('stx_callContract', params);
       console.log('✅ Transaction response:', response);
 
@@ -623,19 +671,12 @@ export class WalletManager {
       }
 
       const txid = this.extractTxId(response);
-      if (!txid) {
-        throw new Error('No transaction ID returned');
-      }
+      if (!txid) throw new Error('No transaction ID returned');
 
-      return {
-        success: true,
-        txId: txid,
-        walletType: 'xverse',
-        hasMessage: true
-      };
+      return { success: true, txId: txid, walletType: 'xverse', hasMessage: true };
     } catch (error) {
       console.error('❌ Xverse transaction failed:', error);
-      throw new Error(error.message || 'Transaction failed');
+      throw error;
     }
   }
 
@@ -651,14 +692,21 @@ export class WalletManager {
     }
 
     try {
-      if (this.walletType === 'leather') {
-        return await this.withdrawLeather(this.address);
-      } else if (this.walletType === 'xverse') {
-        return await this.withdrawXverse(this.address);
-      } else {
-        throw new Error('Unknown wallet type: ' + this.walletType);
+      const result = this.walletType === 'leather'
+        ? await this.withTimeout(this.withdrawLeather(this.address))
+        : await this.withTimeout(this.withdrawXverse(this.address));
+      
+      if (this.pendingTxTimeout) {
+        clearTimeout(this.pendingTxTimeout);
+        this.pendingTxTimeout = null;
       }
+      
+      return result;
     } catch (error) {
+      if (this.pendingTxTimeout) {
+        clearTimeout(this.pendingTxTimeout);
+        this.pendingTxTimeout = null;
+      }
       console.error('❌ Withdraw error:', error);
       throw error;
     }
@@ -675,7 +723,7 @@ export class WalletManager {
       contract: contractId,
       functionName: 'withdraw',
       functionArgs: [argHex],
-      postConditionMode: 'allow',
+      postConditionMode: PostConditionMode.Allow, // Owner withdrawal
       network: CONFIG.NETWORK.DEFAULT,
     };
 
@@ -699,7 +747,7 @@ export class WalletManager {
       contract: contractId,
       functionName: 'withdraw',
       functionArgs: [argHex],
-      postConditionMode: 'allow',
+      postConditionMode: PostConditionMode.Allow, // Owner withdrawal
       network: CONFIG.NETWORK.DEFAULT,
     };
 
