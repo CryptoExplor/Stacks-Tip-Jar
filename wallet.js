@@ -520,14 +520,7 @@ export class WalletManager {
         contract: contractId,
         functionName: 'send-tip',
         functionArgs: [argHex],
-        postConditionMode: PostConditionMode.Deny,
-        postConditions: [
-          makeStandardSTXPostCondition(
-            this.address,
-            FungibleConditionCode.Equal,
-            microAmount
-          )
-        ],
+        postConditionMode: 'allow',
         network: CONFIG.NETWORK.DEFAULT,
       };
 
