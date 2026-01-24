@@ -351,12 +351,18 @@ export class UIController {
     
     const tipper = document.createElement('div');
     tipper.className = 'history-item-tipper';
-    tipper.textContent = shortAddress(tx.tipper);
-    tipper.title = tx.tipper; // Full address on hover
+    
+    // FIXED: Better handling of tipper address
+    const tipperAddress = String(tx.tipper || 'Unknown');
+    tipper.textContent = shortAddress(tipperAddress);
+    tipper.title = tipperAddress; // Full address on hover
     
     const amount = document.createElement('div');
     amount.className = 'history-item-amount';
-    amount.textContent = formatStx(tx.amount);
+    
+    // FIXED: Better handling of amount
+    const amountValue = typeof tx.amount === 'number' ? tx.amount : 0;
+    amount.textContent = formatStx(amountValue);
     
     header.appendChild(tipper);
     header.appendChild(amount);
@@ -367,9 +373,10 @@ export class UIController {
     // Block height
     const blockMeta = document.createElement('div');
     blockMeta.className = 'history-item-meta-item';
+    const blockValue = typeof tx.blockHeight === 'number' && !isNaN(tx.blockHeight) ? tx.blockHeight : '?';
     blockMeta.innerHTML = `
       <span class="history-item-meta-icon">📦</span>
-      <span>Block ${tx.blockHeight}</span>
+      <span>Block ${blockValue}</span>
     `;
     meta.appendChild(blockMeta);
     
@@ -397,7 +404,6 @@ export class UIController {
     
     return item;
   }
-
   // FIXED: Show loading state during refresh
   async refreshHistory() {
     console.log('🔄 Refreshing history...');
