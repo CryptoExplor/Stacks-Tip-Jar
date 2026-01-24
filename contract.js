@@ -1,10 +1,12 @@
-// contract.js - FIXED principal encoding
+// contract.js - FIXED transaction parsing
 
 import { CONFIG, getNetworkEndpoint, microToStx } from './config.js';
 import { 
   principalCV, 
   cvToHex,
-  uintCV
+  uintCV,
+  deserializeCV,
+  cvToValue
 } from '@stacks/transactions';
 
 export class ContractManager {
@@ -21,7 +23,7 @@ export class ContractManager {
       userHistory: null
     };
     this.cacheTimeout = 5000;
-    this.requestQueue = Promise.resolve(); // For rate limiting
+    this.requestQueue = Promise.resolve();
   }
 
   isCacheValid() {
@@ -44,7 +46,6 @@ export class ContractManager {
     };
   }
 
-  // FIXED: Use @stacks/transactions for proper encoding
   encodePrincipal(address) {
     try {
       const cv = principalCV(address);
@@ -65,14 +66,11 @@ export class ContractManager {
     }
   }
 
-  // FIXED: Add rate limiting to prevent 429 errors
   async rateLimit() {
-    // Wait 200ms between requests
     await new Promise(resolve => setTimeout(resolve, 200));
   }
 
   async callReadOnly(functionName, functionArgs = [], network = CONFIG.NETWORK.DEFAULT) {
-    // Queue requests to avoid rate limiting
     this.requestQueue = this.requestQueue.then(async () => {
       await this.rateLimit();
       
@@ -127,7 +125,6 @@ export class ContractManager {
     console.log('📝 Contract ID:', contractId);
 
     try {
-      // Fetch basic stats first (no arguments)
       const balance = await this.callReadOnly('get-contract-balance', [], network)
         .then(r => this.extractValue(r, 'uint'))
         .catch(() => 0);
@@ -148,7 +145,6 @@ export class ContractManager {
         .then(r => this.extractValue(r, 'principal'))
         .catch(() => null);
 
-      // Convert to STX for display
       const balanceSTX = microToStx(balance);
       const totalTipsSTX = microToStx(totalTips);
 
@@ -167,7 +163,6 @@ export class ContractManager {
         lastUpdate: Date.now(),
       };
 
-      // FIXED: Only fetch user stats if address provided
       if (userAddress) {
         try {
           const userStatsResult = await this.callReadOnly(
@@ -195,7 +190,6 @@ export class ContractManager {
           }
         } catch (error) {
           console.warn('⚠️ Failed to fetch user stats:', error.message);
-          // Continue without user stats
         }
       }
 
@@ -207,7 +201,6 @@ export class ContractManager {
     }
   }
 
-  // Rest of your methods stay the same...
   async fetchTransactionHistory(network = CONFIG.NETWORK.DEFAULT, limit = 10) {
     console.log('📜 Fetching transaction history...');
     
@@ -218,6 +211,8 @@ export class ContractManager {
       if (total === 0) {
         return [];
       }
+      
+      console.log(`📊 Contract has ${total} transactions, fetching...`);
       
       const start = Math.max(1, total - limit + 1);
       const transactions = [];
@@ -245,6 +240,60 @@ export class ContractManager {
     } catch (error) {
       console.error('❌ Failed to fetch transaction history:', error);
       return [];
+    }
+  }
+
+  // FIXED: Use @stacks/transactions to properly deserialize Clarity values
+  extractTransaction(response, txId) {
+    try {
+      const result = response.result || response;
+      
+      // Check for none/empty
+      if (!result || result === 'none' || result === '0x0709') {
+        console.log(`Transaction ${txId} is none/empty`);
+        return null;
+      }
+
+      // FIXED: Deserialize the Clarity value properly
+      if (typeof result === 'string' && result.startsWith('0x')) {
+        const hexBuffer = Buffer.from(result.slice(2), 'hex');
+        const clarityValue = deserializeCV(hexBuffer);
+        const jsValue = cvToValue(clarityValue);
+        
+        console.log(`✅ Deserialized transaction ${txId}:`, jsValue);
+        
+        // Handle both tuple formats
+        const tipper = jsValue.tipper?.value || jsValue.tipper;
+        const amount = jsValue.amount?.value || jsValue.amount;
+        const blockHeight = jsValue['block-height']?.value || jsValue.blockHeight?.value || jsValue['block-height'] || jsValue.blockHeight;
+        const hasMessage = jsValue['has-message']?.value || jsValue.hasMessage?.value || jsValue['has-message'] || jsValue.hasMessage || false;
+        
+        return {
+          txId: txId,
+          tipper: tipper,
+          amount: microToStx(Number(amount)),
+          blockHeight: Number(blockHeight),
+          timestamp: Number(blockHeight), // Using block height as timestamp
+          hasMessage: Boolean(hasMessage)
+        };
+      }
+      
+      // Fallback for object format
+      if (typeof result === 'object' && result !== null) {
+        return {
+          txId: txId,
+          tipper: this.extractValue(result.tipper, 'principal'),
+          amount: microToStx(this.extractValue(result.amount, 'uint')),
+          blockHeight: this.extractValue(result['block-height'] || result.blockHeight, 'uint'),
+          timestamp: this.extractValue(result.timestamp, 'uint'),
+          hasMessage: this.extractValue(result['has-message'] || result.hasMessage, 'bool')
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error(`❌ Failed to extract transaction ${txId}:`, error);
+      return null;
     }
   }
 
@@ -401,27 +450,6 @@ export class ContractManager {
       lastTipBlock: 0,
       isPremium: false
     };
-  }
-
-  extractTransaction(response, txId) {
-    const result = response.result || response;
-    
-    if (!result || result === 'none' || result === '0x0709') {
-      return null;
-    }
-    
-    if (typeof result === 'object' && result !== null) {
-      return {
-        txId: txId,
-        tipper: this.extractValue(result.tipper, 'principal'),
-        amount: microToStx(this.extractValue(result.amount, 'uint')),
-        blockHeight: this.extractValue(result['block-height'] || result.blockHeight, 'uint'),
-        timestamp: this.extractValue(result.timestamp, 'uint'),
-        hasMessage: this.extractValue(result['has-message'] || result.hasMessage, 'bool')
-      };
-    }
-    
-    return null;
   }
 
   async getBalance(network = CONFIG.NETWORK.DEFAULT, forceRefresh = false) {
