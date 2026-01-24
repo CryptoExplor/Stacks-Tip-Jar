@@ -67,7 +67,8 @@ export class ContractManager {
   }
 
   async rateLimit() {
-    await new Promise(resolve => setTimeout(resolve, 200));
+    // FIXED: Increased from 200ms to 500ms to avoid 429 errors
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
 
   async callReadOnly(functionName, functionArgs = [], network = CONFIG.NETWORK.DEFAULT) {
@@ -113,6 +114,7 @@ export class ContractManager {
   }
 
   async fetchContractData(network = CONFIG.NETWORK.DEFAULT, userAddress = null) {
+    // FIXED: Better caching to reduce API calls
     if (this.isCacheValid() && !userAddress) {
       console.log('💾 Using cached contract data');
       return this.cache;
@@ -125,22 +127,31 @@ export class ContractManager {
     console.log('📝 Contract ID:', contractId);
 
     try {
+      // FIXED: Fetch all basic stats in sequence with delays to avoid rate limiting
       const balance = await this.callReadOnly('get-contract-balance', [], network)
         .then(r => this.extractValue(r, 'uint'))
         .catch(() => 0);
+      
+      await this.rateLimit(); // Add delay between calls
       
       const totalTips = await this.callReadOnly('get-total-tips', [], network)
         .then(r => this.extractValue(r, 'uint'))
         .catch(() => 0);
 
+      await this.rateLimit();
+      
       const totalTippers = await this.callReadOnly('get-total-tippers', [], network)
         .then(r => this.extractValue(r, 'uint'))
         .catch(() => 0);
 
+      await this.rateLimit();
+      
       const totalTransactions = await this.callReadOnly('get-total-transactions', [], network)
         .then(r => this.extractValue(r, 'uint'))
         .catch(() => 0);
 
+      await this.rateLimit();
+      
       const owner = await this.callReadOnly('get-owner', [], network)
         .then(r => this.extractValue(r, 'principal'))
         .catch(() => null);
@@ -165,11 +176,15 @@ export class ContractManager {
 
       if (userAddress) {
         try {
+          await this.rateLimit();
+          
           const userStatsResult = await this.callReadOnly(
             'get-tipper-stats', 
             [this.encodePrincipal(userAddress)], 
             network
           );
+          
+          await this.rateLimit();
           
           const isPremiumResult = await this.callReadOnly(
             'is-premium-tipper', 
@@ -262,33 +277,40 @@ export class ContractManager {
         
         console.log(`✅ Deserialized transaction ${txId}:`, jsValue);
         
-        // Extract values - cvToValue returns BigInt for uint
-        let tipper = jsValue.tipper?.value || jsValue.tipper;
-        let amount = jsValue.amount?.value || jsValue.amount;
-        let blockHeight = jsValue['block-height']?.value || jsValue.blockHeight?.value || jsValue['block-height'] || jsValue.blockHeight;
-        let hasMessage = jsValue['has-message']?.value || jsValue.hasMessage?.value || jsValue['has-message'] || jsValue.hasMessage;
+        // CRITICAL FIX: The contract returns an (optional (tuple ...))
+        // So jsValue.value contains the actual tuple
+        let txData = jsValue;
         
-        // Convert BigInt to Number for amount and blockHeight
-        if (typeof amount === 'bigint') {
-          amount = Number(amount);
-        }
-        if (typeof blockHeight === 'bigint') {
-          blockHeight = Number(blockHeight);
+        // If it's wrapped in an optional, unwrap it
+        if (jsValue.type && jsValue.type.includes('optional') && jsValue.value) {
+          txData = jsValue.value;
+          console.log(`📦 Unwrapped optional, actual data:`, txData);
         }
         
-        // Ensure tipper is a string
+        // Now extract from the tuple
+        const tipper = txData.tipper || txData['tipper'];
+        const amount = txData.amount || txData['amount'];
+        const blockHeight = txData['block-height'] || txData.blockHeight;
+        const hasMessage = txData['has-message'] || txData.hasMessage;
+        
+        // Convert BigInt to Number
+        const amountNum = typeof amount === 'bigint' ? Number(amount) : Number(amount || 0);
+        const blockNum = typeof blockHeight === 'bigint' ? Number(blockHeight) : Number(blockHeight || 0);
+        
+        // Convert tipper to string if it's an object
+        let tipperStr = tipper;
         if (typeof tipper === 'object' && tipper !== null) {
-          tipper = tipper.value || tipper.address || String(tipper);
+          tipperStr = tipper.value || tipper.address || String(tipper);
         }
         
-        console.log(`📊 Extracted values - Tipper: ${tipper}, Amount: ${amount}, Block: ${blockHeight}`);
+        console.log(`📊 Final extracted - Tipper: ${tipperStr}, Amount: ${amountNum}, Block: ${blockNum}`);
         
         return {
           txId: txId,
-          tipper: tipper,
-          amount: microToStx(amount),
-          blockHeight: blockHeight,
-          timestamp: blockHeight, // Using block height as timestamp
+          tipper: tipperStr,
+          amount: microToStx(amountNum),
+          blockHeight: blockNum,
+          timestamp: blockNum,
           hasMessage: Boolean(hasMessage)
         };
       }
