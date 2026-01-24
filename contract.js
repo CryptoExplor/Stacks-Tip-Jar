@@ -262,18 +262,33 @@ export class ContractManager {
         
         console.log(`✅ Deserialized transaction ${txId}:`, jsValue);
         
-        // Handle both tuple formats
-        const tipper = jsValue.tipper?.value || jsValue.tipper;
-        const amount = jsValue.amount?.value || jsValue.amount;
-        const blockHeight = jsValue['block-height']?.value || jsValue.blockHeight?.value || jsValue['block-height'] || jsValue.blockHeight;
-        const hasMessage = jsValue['has-message']?.value || jsValue.hasMessage?.value || jsValue['has-message'] || jsValue.hasMessage || false;
+        // Extract values - cvToValue returns BigInt for uint
+        let tipper = jsValue.tipper?.value || jsValue.tipper;
+        let amount = jsValue.amount?.value || jsValue.amount;
+        let blockHeight = jsValue['block-height']?.value || jsValue.blockHeight?.value || jsValue['block-height'] || jsValue.blockHeight;
+        let hasMessage = jsValue['has-message']?.value || jsValue.hasMessage?.value || jsValue['has-message'] || jsValue.hasMessage;
+        
+        // Convert BigInt to Number for amount and blockHeight
+        if (typeof amount === 'bigint') {
+          amount = Number(amount);
+        }
+        if (typeof blockHeight === 'bigint') {
+          blockHeight = Number(blockHeight);
+        }
+        
+        // Ensure tipper is a string
+        if (typeof tipper === 'object' && tipper !== null) {
+          tipper = tipper.value || tipper.address || String(tipper);
+        }
+        
+        console.log(`📊 Extracted values - Tipper: ${tipper}, Amount: ${amount}, Block: ${blockHeight}`);
         
         return {
           txId: txId,
           tipper: tipper,
-          amount: microToStx(Number(amount)),
-          blockHeight: Number(blockHeight),
-          timestamp: Number(blockHeight), // Using block height as timestamp
+          amount: microToStx(amount),
+          blockHeight: blockHeight,
+          timestamp: blockHeight, // Using block height as timestamp
           hasMessage: Boolean(hasMessage)
         };
       }
